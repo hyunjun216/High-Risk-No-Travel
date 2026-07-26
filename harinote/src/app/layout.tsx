@@ -33,6 +33,9 @@ export default function RootLayout({
               <span className="text-lg font-bold tracking-tight text-slate-900">
                 하리노트
               </span>
+              <span className="hidden text-xs font-medium tracking-tight text-slate-400 sm:inline">
+                High Risk, No Travel
+              </span>
             </Link>
             {/* 전역 검색 — 모든 페이지에서 접근 (md+, 모바일은 페이지 내 검색) */}
             <div className="hidden max-w-xs flex-1 items-center self-center md:flex">
