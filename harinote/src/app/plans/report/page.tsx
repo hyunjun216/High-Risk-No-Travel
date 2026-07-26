@@ -21,6 +21,7 @@ import { totalDistanceKm } from "@/lib/travel-plan";
 import { addDaysISO, formatKoreanDate } from "@/lib/date";
 import { parseProfile, type SearchParamValue } from "@/components/search-params";
 import ReportActions from "@/components/ReportActions";
+import ImportPlanButton from "@/components/ImportPlanButton";
 
 interface Props {
   searchParams: Promise<Record<string, SearchParamValue>>;
@@ -127,7 +128,22 @@ export default async function PlanReportPage({ searchParams }: Props) {
               {PROFILE_LABEL[profile]} 기준 · 스톱 {rows.length}곳
             </p>
           </div>
-          <ReportActions />
+          <div className="flex flex-wrap items-center gap-2 print:hidden">
+            <ReportActions />
+            {/* 공유받은 사람이 이 계획을 자기 플래너로 가져가는 경로 */}
+            <ImportPlanButton
+              items={rows.map(({ stop, place }) => ({
+                contentId: place.contentId,
+                title: place.title,
+                lat: place.lat,
+                lng: place.lng,
+                score: stop.score ?? undefined,
+                day: stop.day,
+              }))}
+              nights={days - 1}
+              from={q.from}
+            />
+          </div>
         </header>
 
         {/* ② 계획 요약 */}
