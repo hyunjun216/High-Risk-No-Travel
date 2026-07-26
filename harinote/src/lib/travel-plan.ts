@@ -110,11 +110,19 @@ export function totalDistanceKm(items: PlanItem[]): number {
   return Math.round(sum * 10) / 10;
 }
 
+/** undefined 허용 + 1 이상 정수 — 일차·박수류 필드 공용 검사 */
+function isOptionalIntAtLeast(v: unknown, min: number): boolean {
+  return v === undefined || (typeof v === "number" && Number.isInteger(v) && v >= min);
+}
+
 /** 저장/복원 시 형태 검증 — 손상된 localStorage 값 방어 */
 export function isValidPlan(v: unknown): v is TravelPlan {
   if (typeof v !== "object" || v === null) return false;
   const p = v as Record<string, unknown>;
   if (!Array.isArray(p.items)) return false;
+  // nights 음수·NaN·소수가 통과하면 totalDays≤0 → itemsByDay의 groups[-1].push 크래시
+  if (!isOptionalIntAtLeast(p.nights, 0)) return false;
+  if (!isOptionalIntAtLeast(p.activeDay, 1)) return false;
   return p.items.every(
     (it) =>
       typeof it === "object" &&
@@ -122,6 +130,7 @@ export function isValidPlan(v: unknown): v is TravelPlan {
       typeof (it as PlanItem).contentId === "number" &&
       typeof (it as PlanItem).title === "string" &&
       typeof (it as PlanItem).lat === "number" &&
-      typeof (it as PlanItem).lng === "number",
+      typeof (it as PlanItem).lng === "number" &&
+      isOptionalIntAtLeast((it as PlanItem).day, 1),
   );
 }

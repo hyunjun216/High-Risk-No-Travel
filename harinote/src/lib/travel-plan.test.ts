@@ -136,4 +136,24 @@ describe("isValidPlan", () => {
     expect(isValidPlan(null)).toBe(false);
     expect(isValidPlan({ items: "nope" })).toBe(false);
   });
+
+  it("nights·activeDay·day 손상 값 거부 — itemsByDay 크래시 방어", () => {
+    // nights 음수 → totalDays 0 → groups[-1].push TypeError
+    expect(isValidPlan({ items: [A], nights: -1 })).toBe(false);
+    expect(isValidPlan({ items: [A], nights: Number.NaN })).toBe(false);
+    expect(isValidPlan({ items: [A], nights: 1.5 })).toBe(false);
+    expect(isValidPlan({ items: [A], nights: "2" })).toBe(false);
+    expect(isValidPlan({ items: [A], activeDay: 0 })).toBe(false);
+    expect(isValidPlan({ items: [A], activeDay: "1" })).toBe(false);
+    expect(isValidPlan({ items: [{ ...A, day: 0 }] })).toBe(false);
+    expect(isValidPlan({ items: [{ ...A, day: 2.5 }] })).toBe(false);
+    // 정상 범위는 통과
+    expect(isValidPlan({ items: [{ ...A, day: 2 }], nights: 3, activeDay: 1 })).toBe(true);
+    expect(isValidPlan({ items: [], nights: 0 })).toBe(true);
+  });
+
+  it("손상 계획이 통과하면 itemsByDay가 던진다 (방어가 필요한 이유)", () => {
+    // isValidPlan이 걸러주지 않으면 이 호출이 크래시함을 문서화
+    expect(() => itemsByDay({ items: [A], nights: -1 })).toThrow();
+  });
 });

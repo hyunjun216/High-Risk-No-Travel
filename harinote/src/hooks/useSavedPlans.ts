@@ -20,7 +20,13 @@ let cachedRaw: string | null = null;
 let cachedList: SavedPlan[] = EMPTY_LIST;
 
 function readList(): SavedPlan[] {
-  const raw = window.localStorage.getItem(STORAGE_KEY);
+  // useTravelPlan.readPlan과 동일 — 접근 차단 SecurityError가 렌더를 죽이지 않게
+  let raw: string | null;
+  try {
+    raw = window.localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return cachedList;
+  }
   if (raw === cachedRaw) return cachedList;
   cachedRaw = raw;
   try {
@@ -41,15 +47,21 @@ function subscribe(onChange: () => void): () => void {
   };
 }
 
-function write(next: SavedPlan[]) {
+function write(next: SavedPlan[]): boolean {
   const raw = JSON.stringify(next);
+  const prevRaw = cachedRaw;
+  const prevList = cachedList;
   cachedRaw = raw;
   cachedList = next;
   try {
     window.localStorage.setItem(STORAGE_KEY, raw);
     window.dispatchEvent(new Event(SYNC_EVENT));
+    return true;
   } catch {
-    /* 저장 실패해도 화면은 다음 읽기에서 이전 상태 유지 */
+    // 실패 시 캐시 원복 + false — 호출부가 "저장했어요" 거짓 표시를 막을 수 있게
+    cachedRaw = prevRaw;
+    cachedList = prevList;
+    return false;
   }
 }
 
@@ -72,8 +84,8 @@ export function useSavedPlans() {
     () => false,
   );
 
-  const save = useCallback((name: string, plan: TravelPlan) => {
-    write(
+  const save = useCallback((name: string, plan: TravelPlan): boolean => {
+    return write(
       upsertSavedPlan(readList(), {
         id: newId(),
         name,

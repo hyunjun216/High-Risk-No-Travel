@@ -27,7 +27,14 @@ let cachedRaw: string | null = null;
 let cachedPlan: TravelPlan = EMPTY_PLAN;
 
 function readPlan(): TravelPlan {
-  const raw = window.localStorage.getItem(STORAGE_KEY);
+  // 쿠키/사이트 데이터 차단 시 localStorage "접근" 자체가 SecurityError를 던진다.
+  // getSnapshot으로 매 렌더 호출되므로 여기서 던지면 페이지 전체가 크래시 — 빈 계획 유지.
+  let raw: string | null;
+  try {
+    raw = window.localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return cachedPlan;
+  }
   if (raw === cachedRaw) return cachedPlan;
   cachedRaw = raw;
   try {
@@ -48,16 +55,22 @@ function subscribe(onChange: () => void): () => void {
   };
 }
 
-function write(next: TravelPlan) {
+function write(next: TravelPlan): boolean {
   const raw = JSON.stringify(next);
   // 모듈 캐시를 즉시 갱신 — 연속 호출(코스 일괄 담기 등)에서 readPlan이 항상 최신 반환
+  const prevRaw = cachedRaw;
+  const prevPlan = cachedPlan;
   cachedRaw = raw;
   cachedPlan = next;
   try {
     window.localStorage.setItem(STORAGE_KEY, raw);
     window.dispatchEvent(new Event(SYNC_EVENT));
+    return true;
   } catch {
-    /* 저장 실패해도 화면은 다음 읽기에서 이전 상태 유지 */
+    // 저장 실패(쿼터·차단) — 캐시를 원복해 "화면은 새 값, 저장소는 옛 값" 불일치 방지
+    cachedRaw = prevRaw;
+    cachedPlan = prevPlan;
+    return false;
   }
 }
 
