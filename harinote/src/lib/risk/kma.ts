@@ -287,8 +287,13 @@ async function fetchKmaGridItemsRaw(
 
   // 타임아웃 — 공공데이터포털 무응답 시 페이지 렌더가 무한정 끌려가지 않도록.
   // 초과 시 reject → 호출부의 mock 폴백·failTtl 재시도 경로를 그대로 탄다.
+  // next.revalidate: Next Data Cache(1시간) — 모듈 메모리 캐시는 라우트별 번들에
+  // 격리돼 /api/warm 크론이 홈 번들 캐시를 못 데운다. Data Cache는 라우트·인스턴스
+  // 공유(Vercel은 원격 캐시)라 크론 워밍이 실제 사용자 요청에 닿는다.
+  // 캐시 키=URL 전체 — base_date/base_time이 포함돼 발표 주기마다 자연 롤오버.
   const res = await fetch(`${BASE_URL}?${params.toString()}`, {
     signal: AbortSignal.timeout(5000),
+    next: { revalidate: 60 * 60 },
   });
   const text = await res.text();
 

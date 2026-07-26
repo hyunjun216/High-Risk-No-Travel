@@ -108,8 +108,10 @@ export async function fetchGangwonStationPm25Raw(): Promise<StationPm25Map> {
   });
 
   // 타임아웃 — kma.ts와 동일한 이유 (무응답 API가 렌더를 붙잡지 않도록)
+  // next.revalidate — kma.ts와 동일: 라우트 간 공유 Data Cache로 크론 워밍이 닿게
   const res = await fetch(`${BASE_URL}?${params.toString()}`, {
     signal: AbortSignal.timeout(5000),
+    next: { revalidate: 60 * 60 },
   });
   const text = await res.text();
 
