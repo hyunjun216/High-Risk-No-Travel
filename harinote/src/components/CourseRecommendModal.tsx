@@ -7,7 +7,6 @@
  */
 import {
   useEffect,
-  useRef,
   useState,
   useSyncExternalStore,
   useTransition,
@@ -33,25 +32,19 @@ const PROFILE_CHIPS: { who: "kids" | "seniors"; icon: string; label: string }[] 
 ];
 
 interface Props {
-  /** 홈 지도 "AI 코스 추천 받기" 진입(?course=1) — SSR에서 파싱해 내려주면 팝업이 열린 채 시작 */
-  autoOpen?: boolean;
-  /** autoOpen 시 미리 선택할 시군 코드 (?sigungu=N) */
-  initialSigungu?: number;
   /** 목록의 선택 날짜(?date=) — 있으면 코스도 같은 날짜 점수로 생성 (한 화면 두 점수 방지) */
   date?: string;
 }
 
-export default function CourseRecommendModal({ autoOpen = false, initialSigungu, date }: Props) {
-  const [open, setOpen] = useState(autoOpen);
-  const [sigungu, setSigungu] = useState<number | undefined>(
-    autoOpen ? initialSigungu : undefined,
-  );
+export default function CourseRecommendModal({ date }: Props) {
+  const [open, setOpen] = useState(false);
+  const [sigungu, setSigungu] = useState<number | undefined>(undefined);
   const [theme, setTheme] = useState<CourseTheme | undefined>();
   const [profile, setProfile] = useState<Profile>("default");
   const [result, setResult] = useState<{ key: string; data: CourseResult } | null>(null);
   const [failed, setFailed] = useState(false);
   const [isPending, startTransition] = useTransition();
-  // 서버 렌더는 false → 클라이언트에서 true. autoOpen이어도 SSR에서
+  // 서버 렌더는 false → 클라이언트에서 true. SSR에서
   // document.body를 참조하지 않도록 포털 렌더를 마운트 후로 미룬다.
   const mounted = useSyncExternalStore(
     () => () => {},
@@ -95,23 +88,6 @@ export default function CourseRecommendModal({ autoOpen = false, initialSigungu,
     setSigungu(code);
     load(code, profile);
   };
-
-  // autoOpen + 시군 미리 선택으로 시작한 경우 첫 코스 로드 (1회)
-  const initLoaded = useRef(false);
-  useEffect(() => {
-    if (initLoaded.current) return;
-    initLoaded.current = true;
-    if (!autoOpen || initialSigungu === undefined) return;
-    startTransition(async () => {
-      try {
-        const data = await recommendCourses(initialSigungu, "default", date);
-        setResult({ key: `${initialSigungu}:default:${date ?? "today"}`, data });
-        setFailed(false);
-      } catch {
-        setFailed(true);
-      }
-    });
-  }, [autoOpen, initialSigungu, date]);
 
   const toggleProfile = (who: "kids" | "seniors") => {
     const next = toggled(profile, who);
