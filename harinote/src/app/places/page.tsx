@@ -67,8 +67,6 @@ export default async function PlacesPage({ searchParams }: Props) {
   const profile = parseProfile(sp.profile);
   const sigunguCode = parseSigungu(sp.sigungu);
   const sigunguName = sigunguCode ? SIGUNGU_SEATS[sigunguCode].name : undefined;
-  // 홈 지도 "AI 코스 추천 받기" 진입 — 플래너의 코스 추천 팝업을 열린 채 시작
-  const courseOpen = first(sp.course) === "1";
 
   // 날짜·기간 모드 (DateChips 또는 홈 날짜 스테퍼에서 전달)
   // 단일: 그날 기준 점수 / 기간: 기간 중 최악일 대표점수로 목록 구성
@@ -364,11 +362,11 @@ export default async function PlacesPage({ searchParams }: Props) {
 
       {/* 우: 내 여행 계획 (lg에서만 sticky — 모바일은 하단 서랍) */}
       <div className="order-3 hidden lg:sticky lg:top-20 lg:block lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
-        <TravelPlannerPanel courseAutoOpen={courseOpen} courseSigungu={sigunguCode} courseDate={date} />
+        <TravelPlannerPanel courseDate={date} profile={profile} transport={transport} />
       </div>
 
       {/* 모바일 계획 서랍 (lg:hidden 내장) */}
-      <PlannerDrawer courseDate={date} />
+      <PlannerDrawer courseDate={date} profile={profile} transport={transport} />
     </div>
   );
 }

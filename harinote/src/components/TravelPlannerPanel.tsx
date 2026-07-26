@@ -7,8 +7,23 @@ import CourseRecommendModal from "@/components/CourseRecommendModal";
 import { useTravelPlan } from "@/hooks/useTravelPlan";
 import { useSavedPlans } from "@/hooks/useSavedPlans";
 import { PLAN_DRAG_TYPE } from "@/components/PlannerCard";
-import { dateOfDay, totalDistanceKm, type PlanItem } from "@/lib/travel-plan";
+import {
+  dateOfDay,
+  swapItem,
+  totalDistanceKm,
+  type PlanItem,
+  type TravelPlan,
+} from "@/lib/travel-plan";
 import { formatKoreanDate, todayISOSeoul } from "@/lib/date";
+import { diagnosePlan } from "@/lib/plan/diagnose-action";
+import {
+  planSignature,
+  STOP_MODE_LABEL,
+  type PlanDiagnosisDto,
+  type StopAlternativeDto,
+} from "@/lib/plan/diagnose";
+import type { Profile } from "@/lib/safety/types";
+import type { Transport } from "@/lib/prefs";
 
 const NIGHTS_OPTIONS = [
   { nights: 0, label: "당일치기" },
@@ -23,15 +38,20 @@ const NIGHTS_OPTIONS = [
  */
 interface Props {
   compact?: boolean;
-  /** ?course=1 진입 시 AI 코스 추천 팝업을 열린 채 시작 (데스크톱 패널에만 전달) */
-  courseAutoOpen?: boolean;
-  courseSigungu?: number;
   /** 목록의 선택 날짜(?date=) — 코스 추천도 같은 날짜 점수로 (한 화면 두 점수 방지) */
   courseDate?: string;
+  /** 안전 진단에 쓰는 동행 프로필·이동수단 — 목록 화면의 현재 조건과 동일하게 */
+  profile?: Profile;
+  transport?: Transport;
 }
 
-export default function TravelPlannerPanel({ compact = false, courseAutoOpen, courseSigungu, courseDate }: Props) {
-  const { plan, hydrated, add, has, remove, move, moveToDay, setActiveDay, setTrip, clear, count, days, activeDay, byDay } =
+export default function TravelPlannerPanel({
+  compact = false,
+  courseDate,
+  profile = "default",
+  transport = "transit",
+}: Props) {
+  const { plan, hydrated, add, has, remove, move, moveToDay, replace, setActiveDay, setTrip, clear, count, days, activeDay, byDay } =
     useTravelPlan();
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dropActive, setDropActive] = useState(false);
@@ -50,6 +70,54 @@ export default function TravelPlannerPanel({ compact = false, courseAutoOpen, co
     setSavedFlash(ok ? "ok" : "fail");
     setTimeout(() => setSavedFlash(null), 2000);
   };
+
+  // 계획 안전 진단 — 스톱별 일차 날짜 재채점 + 주의 스톱 교체 후보
+  const [diag, setDiag] = useState<PlanDiagnosisDto | null>(null);
+  const [diagSig, setDiagSig] = useState("");
+  const [diagLoading, setDiagLoading] = useState(false);
+  const [diagError, setDiagError] = useState(false);
+
+  async function runDiagnosis(target?: TravelPlan) {
+    const p = target ?? plan;
+    if (p.items.length === 0 || diagLoading) return;
+    setDiagLoading(true);
+    setDiagError(false);
+    try {
+      const result = await diagnosePlan({
+        items: p.items.map((it) => ({ contentId: it.contentId, day: it.day ?? 1 })),
+        from: p.from,
+        profile,
+        transport,
+      });
+      setDiag(result);
+      setDiagSig(planSignature(p, profile, transport));
+    } catch {
+      setDiagError(true);
+    } finally {
+      setDiagLoading(false);
+    }
+  }
+
+  // 스톱 구성·출발일·조건이 바뀌면 기존 진단은 낡은 것 (순서 변경은 무관)
+  const diagStale =
+    diag !== null && planSignature(plan, profile, transport) !== diagSig;
+  const diagByStop = new Map(
+    !diagStale && diag ? diag.stops.map((s) => [s.contentId, s]) : [],
+  );
+
+  // 교체(⇄): 같은 자리에서 바꾸고 새 계획으로 즉시 재진단
+  function swapWithAlternative(oldContentId: number, alt: StopAlternativeDto) {
+    const next = swapItem(plan, oldContentId, {
+      contentId: alt.contentId,
+      title: alt.title,
+      lat: alt.lat,
+      lng: alt.lng,
+      score: alt.score,
+    });
+    if (next === plan) return;
+    replace(next);
+    void runDiagnosis(next);
+  }
 
   // 카드에서 온 드롭 페이로드 파싱 (없으면 null = 내부 순서변경)
   function parseCardDrop(e: React.DragEvent): PlanItem | null {
@@ -154,7 +222,7 @@ export default function TravelPlannerPanel({ compact = false, courseAutoOpen, co
 
       {/* AI 코스 추천 — 팝업에서 테마·시군·프로필 선택 후 활성 일차에 담기 */}
       <div className="border-b border-slate-100 px-4 py-2.5">
-        <CourseRecommendModal autoOpen={courseAutoOpen} initialSigungu={courseSigungu} date={courseDate} />
+        <CourseRecommendModal date={courseDate} />
       </div>
 
       {/* 여행 일수·출발일 설정 — localStorage 계획에만 반영 (일차 탭·날짜 라벨) */}
@@ -182,6 +250,47 @@ export default function TravelPlannerPanel({ compact = false, courseAutoOpen, co
           className="rounded-lg bg-white px-2 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-500"
         />
       </div>
+
+      {/* 계획 안전 진단 — 각 스톱을 해당 일차 날짜 기준으로 재채점 */}
+      {hydrated && count > 0 && (
+        <div className="border-b border-slate-100 px-4 py-2.5">
+          <button
+            type="button"
+            onClick={() => void runDiagnosis()}
+            disabled={diagLoading}
+            className="w-full rounded-xl bg-white px-3 py-2 text-sm font-bold text-teal-700 ring-1 ring-teal-600/40 transition-colors hover:bg-teal-50 disabled:opacity-60"
+          >
+            {diagLoading ? "진단 중…" : "🩺 계획 안전 진단"}
+          </button>
+          {diagError && (
+            <p className="mt-1.5 text-xs font-semibold text-red-500">
+              진단에 실패했어요. 잠시 후 다시 시도해 주세요.
+            </p>
+          )}
+          {diag && diagStale && !diagLoading && (
+            <p className="mt-1.5 text-xs font-semibold text-amber-600">
+              계획이 바뀌었어요 — 다시 진단해 보세요
+            </p>
+          )}
+          {diag && !diagStale && !diagError && (
+            <p
+              className={`mt-1.5 text-xs font-semibold ${
+                diag.riskyCount > 0 ? "text-amber-700" : "text-teal-700"
+              }`}
+            >
+              {diag.riskyCount > 0
+                ? `⚠️ 주의 스톱 ${diag.riskyCount}곳 — 교체 후보를 확인해 보세요`
+                : "✓ 전 스톱 방문 주의 요인 낮음"}
+              {diag.assumedToday && (
+                <span className="font-normal text-slate-400">
+                  {" "}
+                  · 출발일 미설정, 오늘 출발 기준
+                </span>
+              )}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* 일차 탭 (N박일 때만) */}
       {days > 1 && (
@@ -249,6 +358,8 @@ export default function TravelPlannerPanel({ compact = false, courseAutoOpen, co
           <ol className="space-y-1.5">
             {dayItems.map((it) => {
               const globalIdx = plan.items.indexOf(it);
+              const stop = diagByStop.get(it.contentId);
+              const risky = stop?.grade !== undefined && stop.grade !== null && stop.grade !== "low";
               return (
                 <li
                   key={it.contentId}
@@ -279,8 +390,11 @@ export default function TravelPlannerPanel({ compact = false, courseAutoOpen, co
                     }
                     setDragIndex(null);
                   }}
-                  className="flex items-center gap-2 rounded-lg bg-slate-50 px-2.5 py-2 ring-1 ring-slate-100"
+                  className={`rounded-lg bg-slate-50 px-2.5 py-2 ring-1 ${
+                    risky ? "ring-amber-300" : "ring-slate-100"
+                  }`}
                 >
+                  <div className="flex items-center gap-2">
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-teal-600 text-[11px] font-bold text-white">
                     {dayItems.indexOf(it) + 1}
                   </span>
@@ -290,11 +404,30 @@ export default function TravelPlannerPanel({ compact = false, courseAutoOpen, co
                   >
                     {it.title}
                   </Link>
-                  {it.score !== undefined && (
+                  {stop && stop.score !== null ? (
+                    // 진단 점수 — 해당 일차 날짜 기준 (담을 당시 점수를 대체)
+                    <span
+                      title={`${STOP_MODE_LABEL[stop.mode]}${
+                        stop.topFactors.length > 0
+                          ? ` · ${stop.topFactors.map((f) => `${f.label} −${f.points}점`).join(" · ")}`
+                          : ""
+                      }`}
+                      className={`shrink-0 text-xs font-bold tabular-nums ${
+                        stop.grade === "low"
+                          ? "text-teal-600"
+                          : stop.grade === "moderate"
+                            ? "text-amber-600"
+                            : "text-red-600"
+                      }`}
+                    >
+                      {risky && "⚠ "}
+                      {stop.score}
+                    </span>
+                  ) : it.score !== undefined ? (
                     <span className="shrink-0 text-xs font-bold tabular-nums text-slate-400">
                       {it.score}
                     </span>
-                  )}
+                  ) : null}
                   {/* 다른 일차로 이동 (N박일 때) */}
                   {days > 1 && (
                     <select
@@ -318,6 +451,47 @@ export default function TravelPlannerPanel({ compact = false, courseAutoOpen, co
                   >
                     ✕
                   </button>
+                  </div>
+                  {/* 주의 스톱 — 요인 안내 + 같은 자리 교체 후보 */}
+                  {stop && risky && (
+                    <div className="mt-1.5 space-y-1 pl-7">
+                      {stop.topFactors.length > 0 && (
+                        <p className="text-[11px] font-semibold text-amber-700">
+                          {stop.topFactors
+                            .map((f) => `${f.label} −${f.points}점`)
+                            .join(" · ")}
+                          <span className="font-normal text-slate-400">
+                            {" "}
+                            · {STOP_MODE_LABEL[stop.mode]}
+                          </span>
+                        </p>
+                      )}
+                      {stop.alternatives.map((alt) => (
+                        <button
+                          key={alt.contentId}
+                          type="button"
+                          onClick={() => swapWithAlternative(it.contentId, alt)}
+                          className="flex w-full items-center gap-1.5 rounded-lg bg-white px-2 py-1.5 text-left text-xs ring-1 ring-slate-200 transition-colors hover:bg-teal-50 hover:ring-teal-300"
+                        >
+                          <span className="shrink-0 font-bold text-teal-700">⇄</span>
+                          <span className="min-w-0 flex-1 truncate font-semibold text-slate-600">
+                            {alt.title}
+                          </span>
+                          <span className="shrink-0 font-bold tabular-nums text-teal-600">
+                            {alt.score}
+                          </span>
+                          <span className="shrink-0 text-slate-400">
+                            {alt.distanceKm}km
+                          </span>
+                        </button>
+                      ))}
+                      {stop.alternatives.length === 0 && (
+                        <p className="text-[11px] text-slate-400">
+                          근처에 더 나은 대체지가 없어요
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </li>
               );
             })}

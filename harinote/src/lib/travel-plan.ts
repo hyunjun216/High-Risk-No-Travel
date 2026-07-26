@@ -93,6 +93,23 @@ export function setActiveDay(plan: TravelPlan, day: number): TravelPlan {
   return { ...plan, activeDay: day };
 }
 
+/** 특정 항목을 같은 자리(순서·일차 유지)에서 다른 관광지로 교체 — 진단의 대체 교체(⇄)용.
+ *  대상이 없거나 새 항목이 이미 담겨 있으면 no-op (중복 방지 — addItem과 같은 규칙) */
+export function swapItem(
+  plan: TravelPlan,
+  contentId: number,
+  next: Omit<PlanItem, "day">,
+): TravelPlan {
+  if (plan.items.some((p) => p.contentId === next.contentId)) return plan;
+  if (!plan.items.some((p) => p.contentId === contentId)) return plan;
+  return {
+    ...plan,
+    items: plan.items.map((it) =>
+      it.contentId === contentId ? { ...next, day: it.day } : it,
+    ),
+  };
+}
+
 /** 특정 항목을 다른 일차로 이동 */
 export function setItemDay(plan: TravelPlan, contentId: number, day: number): TravelPlan {
   return {

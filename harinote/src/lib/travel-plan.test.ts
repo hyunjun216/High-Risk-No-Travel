@@ -10,6 +10,7 @@ import {
   reorder,
   setItemDay,
   setTrip,
+  swapItem,
   totalDays,
   totalDistanceKm,
   type PlanItem,
@@ -64,6 +65,24 @@ describe("reorder", () => {
   it("범위 밖·동일 위치는 원본 유지", () => {
     expect(reorder(p3, 0, 0)).toBe(p3);
     expect(reorder(p3, 5, 0)).toBe(p3);
+  });
+});
+
+describe("swapItem", () => {
+  const D: PlanItem = { contentId: 4, title: "D", lat: 37.3, lng: 128.5 };
+  it("같은 자리에서 교체하고 일차를 유지한다", () => {
+    const p = setItemDay(addItem(addItem(EMPTY_PLAN, A), B, 2), 2, 2);
+    const swapped = swapItem(p, 2, D);
+    expect(swapped.items.map((i) => i.contentId)).toEqual([1, 4]);
+    expect(swapped.items[1].day).toBe(2);
+  });
+  it("새 항목이 이미 담겨 있으면 no-op", () => {
+    const p = addItem(addItem(EMPTY_PLAN, A), B);
+    expect(swapItem(p, 1, B)).toBe(p);
+  });
+  it("대상이 없으면 no-op", () => {
+    const p = addItem(EMPTY_PLAN, A);
+    expect(swapItem(p, 99, D)).toBe(p);
   });
 });
 

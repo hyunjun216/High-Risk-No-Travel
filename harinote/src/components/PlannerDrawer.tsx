@@ -3,6 +3,8 @@
 import { useState } from "react";
 import TravelPlannerPanel from "@/components/TravelPlannerPanel";
 import { useTravelPlan } from "@/hooks/useTravelPlan";
+import type { Profile } from "@/lib/safety/types";
+import type { Transport } from "@/lib/prefs";
 
 /**
  * 모바일 전용 계획 서랍 — 하단 고정 "내 계획(N)" 버튼 + bottom sheet.
@@ -11,9 +13,12 @@ import { useTravelPlan } from "@/hooks/useTravelPlan";
 interface Props {
   /** 목록의 선택 날짜(?date=) — 서랍 속 코스 추천도 같은 날짜 점수로 */
   courseDate?: string;
+  /** 안전 진단용 현재 조건 (패널로 전달) */
+  profile?: Profile;
+  transport?: Transport;
 }
 
-export default function PlannerDrawer({ courseDate }: Props) {
+export default function PlannerDrawer({ courseDate, profile, transport }: Props) {
   const { count, hydrated } = useTravelPlan();
   const [open, setOpen] = useState(false);
 
@@ -46,7 +51,7 @@ export default function PlannerDrawer({ courseDate }: Props) {
             >
               닫기 ✕
             </button>
-            <TravelPlannerPanel compact courseDate={courseDate} />
+            <TravelPlannerPanel compact courseDate={courseDate} profile={profile} transport={transport} />
           </div>
         </div>
       )}
