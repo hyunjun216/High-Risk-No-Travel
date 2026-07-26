@@ -16,6 +16,7 @@ import {
 } from "@/lib/travel-plan";
 import { formatKoreanDate, todayISOSeoul } from "@/lib/date";
 import { diagnosePlan } from "@/lib/plan/diagnose-action";
+import { encodePlanQuery } from "@/lib/plan/report-params";
 import {
   planSignature,
   STOP_MODE_LABEL,
@@ -159,6 +160,14 @@ export default function TravelPlannerPanel({
         </h2>
         {hydrated && count > 0 && (
           <div className="flex items-center gap-2.5">
+            <Link
+              href={`/plans/report?${encodePlanQuery(plan)}${
+                profile !== "default" ? `&profile=${profile}` : ""
+              }${transport === "car" ? "&tr=car" : ""}`}
+              className="text-xs font-semibold text-slate-400 transition-colors hover:text-teal-600"
+            >
+              리포트
+            </Link>
             <button
               type="button"
               onClick={() => {

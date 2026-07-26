@@ -2,7 +2,12 @@
  * 계획 안전 진단 — 서버 액션 DTO와 순수 헬퍼 (UI·액션 공용 계약).
  * 플래너에 담긴 스톱을 각 일차의 실제 날짜 기준으로 재채점한 결과를 나른다.
  */
-import type { Profile, RiskBreakdown, RiskLevel } from "@/lib/safety/types";
+import type {
+  Profile,
+  RiskBreakdown,
+  RiskFactorKey,
+  RiskLevel,
+} from "@/lib/safety/types";
 import type { Transport } from "@/lib/prefs";
 import type { TravelPlan } from "@/lib/travel-plan";
 
@@ -37,6 +42,12 @@ export interface StopDiagnosisDto {
   grade: RiskLevel | null;
   /** 감점 큰 순 상위 요인 (표시용) */
   topFactors: { label: string; points: number }[];
+  /**
+   * 감점이 있는 전체 요인 (키 + 관측/예보값) — 계획 체크리스트 등 파생 계산용.
+   * value가 필요한 이유: heat 키는 TCI 열쾌적이라 겨울 추위 감점도 heat로 나온다
+   * (체감온도 값으로 더위/추위를 구분해야 준비물이 갈린다)
+   */
+  riskFactors: { key: RiskFactorKey; value: number }[];
   /** grade가 low가 아닐 때만 채워지는 교체 후보 */
   alternatives: StopAlternativeDto[];
 }

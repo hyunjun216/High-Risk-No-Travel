@@ -99,6 +99,7 @@ export async function diagnosePlan(input: {
         score: null,
         grade: null,
         topFactors: [],
+        riskFactors: [],
         alternatives: [],
       };
 
@@ -143,6 +144,9 @@ export async function diagnosePlan(input: {
         score: breakdown.score,
         grade: breakdown.grade,
         topFactors: topRiskFactors(breakdown),
+        riskFactors: breakdown.factors
+          .filter((f) => f.points > 0)
+          .map((f) => ({ key: f.key, value: f.value })),
         alternatives,
       };
     }),

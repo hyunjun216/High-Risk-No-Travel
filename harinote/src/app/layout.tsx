@@ -51,7 +51,7 @@ export default function RootLayout({
             </p>
             <p>
               데이터 출처: 한국관광공사 TourAPI · 기상청 · AirKorea(한국환경공단)
-              · 산림청 · 보건복지부 · 행정안전부
+              · 산림청(국립산림과학원) · 국립중앙의료원 헬스맵
             </p>
             <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-500">
               본 서비스의 안전 점수는 공공데이터 기반 참고 정보이며 안전을
