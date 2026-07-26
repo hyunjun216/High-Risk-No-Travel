@@ -24,6 +24,7 @@ import {
   RECO_WEATHER_RISK_INDOOR_THRESHOLD,
 } from "@/lib/safety/weights";
 import { haversineKm } from "@/lib/reco/distance";
+import { CURATED_PLACES } from "@/lib/curation";
 
 export type CourseTheme = "nature" | "water" | "culture";
 
@@ -74,6 +75,24 @@ const AFTERNOON_RADIUS_KM = 15;
  * (half-day.ts의 SAME_CAT3_BONUS와 같은 수준).
  */
 const SAME_THEME_BONUS = 3;
+
+/**
+ * 관광 매력도 우대 — 안전점수만으로 뽑으면 90점대가 밀집한 시군에서
+ * 사진도 없는 무명 시설(요가원 등)이 대표 관광지를 제치는 문제 보정.
+ * 큐레이션(에디터 선정) > TourAPI 대표사진 보유. 감점 가중치가 아닌
+ * UI 추천 우대 값이라 weights.ts가 아닌 여기에 둔다.
+ * 관광 스톱(오전·오후)에만 적용 — 점심(음식점)은 사진 유무가 품질 신호로 약하다.
+ */
+const CURATED_BONUS = 6;
+const PHOTO_BONUS = 4;
+const CURATED_IDS = new Set(CURATED_PLACES.map((c) => c.contentId));
+
+function attractionBonus(p: PlaceWithSafety): number {
+  return (
+    (CURATED_IDS.has(p.contentId) ? CURATED_BONUS : 0) +
+    (p.imageUrl ? PHOTO_BONUS : 0)
+  );
+}
 
 const NATURE_ENV: readonly PlaceEnvType[] = [
   "outdoor_mountain",
@@ -139,7 +158,7 @@ function buildThemedCourse(
     if (c.sigunguCode !== sigunguCode) return null;
     if (c.contentTypeId === 39) return null;
     if (!matchesTheme(c, theme)) return null;
-    return { score: c.safety.score, km: 0 };
+    return { score: c.safety.score + attractionBonus(c), km: 0 };
   });
   const anchor = morningPicks[0];
   if (!anchor) return null;
@@ -168,7 +187,10 @@ function buildThemedCourse(
     // 실내 우선은 점수·거리보다 앞서야 하므로 큰 오프셋으로 계층화
     const indoorOffset = preferIndoor && c.envType === "indoor" ? 1000 : 0;
     const themeBonus = matchesTheme(c, theme) ? SAME_THEME_BONUS : 0;
-    return { score: indoorOffset + c.safety.score + themeBonus, km };
+    return {
+      score: indoorOffset + c.safety.score + themeBonus + attractionBonus(c),
+      km,
+    };
   });
   const afternoon = afternoonPicks[0];
 

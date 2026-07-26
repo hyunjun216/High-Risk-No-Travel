@@ -9,6 +9,8 @@ import { useSavedPlans } from "@/hooks/useSavedPlans";
 import { PLAN_DRAG_TYPE } from "@/components/PlannerCard";
 import {
   dateOfDay,
+  reorderDay,
+  suggestDayOrder,
   swapItem,
   totalDistanceKm,
   type PlanItem,
@@ -518,6 +520,20 @@ export default function TravelPlannerPanel({
           <CourseRouteMap
             stops={dayItems.map((it) => ({ title: it.title, lat: it.lat, lng: it.lng }))}
           />
+          {(() => {
+            // 동선 검증 — 우회가 크면(1km·10% 이상) 최근접 이웃 순서를 제안
+            const suggestion = suggestDayOrder(dayItems);
+            return suggestion ? (
+              <button
+                type="button"
+                onClick={() => replace(reorderDay(plan, activeDay, suggestion.items))}
+                className="mt-2 w-full rounded-lg bg-amber-50 px-2.5 py-1.5 text-left text-xs font-semibold text-amber-800 ring-1 ring-amber-200 transition-colors hover:bg-amber-100"
+              >
+                💡 순서를 바꾸면 직선 {suggestion.savedKm}km 절약 —{" "}
+                <span className="underline">적용하기</span>
+              </button>
+            ) : null;
+          })()}
           <p className="mt-1.5 text-[11px] leading-relaxed text-slate-400">
             직선 거리 기준이에요. 실제 소요 시간은 지도 앱에서 확인하세요.
           </p>

@@ -258,3 +258,46 @@ describe("buildThemedCourses — 60점 컷", () => {
     expect(courses.nature).toBeNull();
   });
 });
+
+describe("관광 매력도 우대 (사진·큐레이션)", () => {
+  it("안전점수가 근소하게 낮아도 대표사진 있는 곳이 앵커가 된다", () => {
+    const noPhoto = makePlace({ title: "무명 시설", safety: makeSafety(91) });
+    const withPhoto = makePlace({
+      title: "대표 관광지",
+      imageUrl: "http://tong.visitkorea.or.kr/x.jpg",
+      safety: makeSafety(90),
+    });
+    const lunch = makeRestaurant({ safety: makeSafety(90) });
+    const courses = buildThemedCourses(SIGUNGU, [noPhoto, withPhoto, lunch]);
+    expect(courses.nature?.stops[0].place.title).toBe("대표 관광지");
+  });
+
+  it("큐레이션 관광지는 사진만 있는 곳보다 우선한다 (동점일 때)", () => {
+    const curated = makePlace({
+      contentId: 128788, // 설악산 케이블카 — CURATED_PLACES 실존 id
+      title: "큐레이션 관광지",
+      imageUrl: "http://tong.visitkorea.or.kr/a.jpg",
+      safety: makeSafety(90),
+    });
+    const photoOnly = makePlace({
+      title: "사진만 있는 곳",
+      imageUrl: "http://tong.visitkorea.or.kr/b.jpg",
+      safety: makeSafety(90),
+    });
+    const lunch = makeRestaurant({ safety: makeSafety(90) });
+    const courses = buildThemedCourses(SIGUNGU, [photoOnly, curated, lunch]);
+    expect(courses.nature?.stops[0].place.title).toBe("큐레이션 관광지");
+  });
+
+  it("안전점수 차이가 크면(우대 폭 초과) 여전히 안전한 곳이 이긴다", () => {
+    const muchSafer = makePlace({ title: "훨씬 안전", safety: makeSafety(99) });
+    const withPhoto = makePlace({
+      title: "사진 있는 곳",
+      imageUrl: "http://tong.visitkorea.or.kr/x.jpg",
+      safety: makeSafety(80),
+    });
+    const lunch = makeRestaurant({ safety: makeSafety(90) });
+    const courses = buildThemedCourses(SIGUNGU, [muchSafer, withPhoto, lunch]);
+    expect(courses.nature?.stops[0].place.title).toBe("훨씬 안전");
+  });
+});

@@ -8,12 +8,15 @@ import {
   itemsByDay,
   removeItem,
   reorder,
+  reorderDay,
   setItemDay,
   setTrip,
+  suggestDayOrder,
   swapItem,
   totalDays,
   totalDistanceKm,
   type PlanItem,
+  type TravelPlan,
 } from "@/lib/travel-plan";
 
 const A: PlanItem = { contentId: 1, title: "A", lat: 37.75, lng: 128.87 }; // 강릉
@@ -174,5 +177,50 @@ describe("isValidPlan", () => {
   it("손상 계획이 통과하면 itemsByDay가 던진다 (방어가 필요한 이유)", () => {
     // isValidPlan이 걸러주지 않으면 이 호출이 크래시함을 문서화
     expect(() => itemsByDay({ items: [A], nights: -1 })).toThrow();
+  });
+});
+
+describe("suggestDayOrder / reorderDay", () => {
+  // 일직선상 좌표: A(37.0) — B(37.1) — C(37.2). A→C→B는 우회(0.4도), A→B→C가 최단(0.2도)
+  const A2: PlanItem = { contentId: 11, title: "A", lat: 37.0, lng: 128.0 };
+  const B2: PlanItem = { contentId: 12, title: "B", lat: 37.1, lng: 128.0 };
+  const C2: PlanItem = { contentId: 13, title: "C", lat: 37.2, lng: 128.0 };
+
+  it("우회 순서면 최근접 이웃 순서와 절약 km를 제안한다", () => {
+    const s = suggestDayOrder([A2, C2, B2]);
+    expect(s).not.toBeNull();
+    expect(s!.items.map((i) => i.contentId)).toEqual([11, 12, 13]);
+    expect(s!.savedKm).toBeGreaterThan(10); // 0.2도 ≈ 22km 절약
+  });
+
+  it("이미 최적이거나 절약이 미미하면 null", () => {
+    expect(suggestDayOrder([A2, B2, C2])).toBeNull();
+    expect(suggestDayOrder([A2, B2])).toBeNull(); // 3곳 미만
+  });
+
+  it("reorderDay는 해당 일차만 새 순서로 바꾼다", () => {
+    const other: PlanItem = { contentId: 14, title: "D", lat: 38, lng: 128, day: 2 };
+    const plan: TravelPlan = {
+      items: [
+        { ...A2, day: 1 },
+        { ...C2, day: 1 },
+        { ...B2, day: 1 },
+        other,
+      ],
+      nights: 1,
+    };
+    const next = reorderDay(plan, 1, [
+      { ...A2, day: 1 },
+      { ...B2, day: 1 },
+      { ...C2, day: 1 },
+    ]);
+    expect(itemsByDay(next)[0].map((i) => i.contentId)).toEqual([11, 12, 13]);
+    expect(itemsByDay(next)[1].map((i) => i.contentId)).toEqual([14]);
+  });
+
+  it("reorderDay는 순열이 아니면 no-op", () => {
+    const plan: TravelPlan = { items: [{ ...A2, day: 1 }, { ...B2, day: 1 }] };
+    expect(reorderDay(plan, 1, [{ ...A2, day: 1 }])).toBe(plan);
+    expect(reorderDay(plan, 9, [])).toBe(plan);
   });
 });
