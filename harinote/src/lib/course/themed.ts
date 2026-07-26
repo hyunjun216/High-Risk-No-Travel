@@ -65,10 +65,10 @@ export interface ThemedCourse {
   totalKm: number;
 }
 
-/** 점심(음식점) 탐색 반경 — half-day.ts와 동일 */
-const LUNCH_RADIUS_KM = 10;
-/** 오후 스톱 탐색 반경 (직전 스톱 기준) — half-day.ts와 동일 */
-const AFTERNOON_RADIUS_KM = 15;
+/** 점심(음식점) 탐색 반경 — half-day.ts와 동일 (multi-day.ts도 공유) */
+export const LUNCH_RADIUS_KM = 10;
+/** 오후 스톱 탐색 반경 (직전 스톱 기준) — half-day.ts와 동일 (multi-day.ts도 공유) */
+export const AFTERNOON_RADIUS_KM = 15;
 /**
  * 오후 후보가 코스 테마와 같은 유형이면 주는 소폭 가점.
  * 감점 가중치가 아닌 UI 추천 우대 값이라 weights.ts가 아닌 여기에 둔다
@@ -87,7 +87,7 @@ const CURATED_BONUS = 6;
 const PHOTO_BONUS = 4;
 const CURATED_IDS = new Set(CURATED_PLACES.map((c) => c.contentId));
 
-function attractionBonus(p: PlaceWithSafety): number {
+export function attractionBonus(p: PlaceWithSafety): number {
   return (
     (CURATED_IDS.has(p.contentId) ? CURATED_BONUS : 0) +
     (p.imageUrl ? PHOTO_BONUS : 0)
@@ -123,7 +123,7 @@ function round1(n: number): number {
  * 후보를 정렬해 상위 n개 반환 — 스톱(1위) + 대안(2~3위)이 같은 조건을 공유한다.
  * 정렬: rankScore 내림차순 → 거리 오름차순 → contentId 오름차순(동점 일관 규칙)
  */
-function selectTopCandidates(
+export function selectTopCandidates(
   candidates: PlaceWithSafety[],
   used: Set<number>,
   n: number,
@@ -272,7 +272,7 @@ export interface ThemedCourseDto {
   totalKm: number;
 }
 
-function toPlaceDto(p: PlaceWithSafety): CoursePlaceDto {
+export function toPlaceDto(p: PlaceWithSafety): CoursePlaceDto {
   return {
     contentId: p.contentId,
     title: p.title,

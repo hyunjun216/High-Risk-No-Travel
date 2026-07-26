@@ -14,7 +14,8 @@
     "check:risk": "tsx scripts/check-risk-apis.ts",
     "check:forest": "tsx scripts/check-forest-api.ts",
     "build:hospitals": "tsx scripts/build-hospitals.ts",
-    "build:geo": "tsx scripts/build-gangwon-geo.ts"
+    "build:geo": "tsx scripts/build-gangwon-geo.ts",
+    "build:lodging": "tsx scripts/build-lodging.ts"
   },
   "dependencies": {
     "leaflet": "^1.9.4",

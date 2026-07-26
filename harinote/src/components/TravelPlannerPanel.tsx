@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import CourseRouteMap from "@/components/CourseRouteMap";
 import CourseRecommendModal from "@/components/CourseRecommendModal";
+import MultiDayCourseModal from "@/components/MultiDayCourseModal";
 import { useTravelPlan } from "@/hooks/useTravelPlan";
 import { useSavedPlans } from "@/hooks/useSavedPlans";
 import { PLAN_DRAG_TYPE } from "@/components/PlannerCard";
@@ -232,8 +233,10 @@ export default function TravelPlannerPanel({
       )}
 
       {/* AI 코스 추천 — 팝업에서 테마·시군·프로필 선택 후 활성 일차에 담기 */}
-      <div className="border-b border-slate-100 px-4 py-2.5">
+      <div className="space-y-2 border-b border-slate-100 px-4 py-2.5">
         <CourseRecommendModal date={courseDate} />
+        {/* N박이면 전체 일정(일차별 코스 + 밤 숙소) 추천도 제공 */}
+        {hydrated && days > 1 && <MultiDayCourseModal profile={profile} />}
       </div>
 
       {/* 여행 일수·출발일 설정 — localStorage 계획에만 반영 (일차 탭·날짜 라벨) */}
