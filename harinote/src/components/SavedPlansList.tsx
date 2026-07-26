@@ -4,11 +4,14 @@
  * 저장된 여행 계획 목록 — 카드로 보여주고 "불러와서 수정"(활성 계획 교체 후
  * /places 이동)과 삭제를 제공한다. 데이터는 localStorage(useSavedPlans).
  */
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import CourseRouteMap from "@/components/CourseRouteMap";
 import { useSavedPlans } from "@/hooks/useSavedPlans";
 import { useTravelPlan } from "@/hooks/useTravelPlan";
-import { totalDays } from "@/lib/travel-plan";
+import { itemsByDay, totalDays } from "@/lib/travel-plan";
+import { encodePlanQuery } from "@/lib/plan/report-params";
 import { formatKoreanDate, todayISOSeoul } from "@/lib/date";
 import type { SavedPlan } from "@/lib/saved-plans";
 
@@ -62,48 +65,113 @@ export default function SavedPlansList() {
     <ul className="space-y-3">
       {list.map((saved) => {
         const days = totalDays(saved.plan);
+        const byDay = itemsByDay(saved.plan);
         return (
           <li
             key={saved.id}
-            className="flex flex-wrap items-center gap-3 rounded-2xl bg-white p-4 ring-1 ring-slate-200"
+            className="rounded-2xl bg-white p-4 ring-1 ring-slate-200"
           >
-            <div className="min-w-0 flex-1">
-              <h2 className="truncate text-base font-bold text-slate-900">
-                {saved.name}
-              </h2>
-              <p className="mt-0.5 text-xs font-semibold text-slate-500">
-                {saved.plan.items.length}곳 · {days === 1 ? "당일치기" : `${days - 1}박 ${days}일`}
-                {saved.plan.from && ` · ${formatKoreanDate(saved.plan.from)} 출발`}
-              </p>
-              <p className="mt-0.5 text-[11px] text-slate-400">
-                {/* savedAt은 UTC ISO — KST 날짜로 변환해야 자정~09시 저장분이 안 밀린다 */}
-                {formatKoreanDate(todayISOSeoul(new Date(saved.savedAt)))} 저장
-              </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <h2 className="truncate text-base font-bold text-slate-900">
+                  {saved.name}
+                </h2>
+                <p className="mt-0.5 text-xs font-semibold text-slate-500">
+                  {saved.plan.items.length}곳 · {days === 1 ? "당일치기" : `${days - 1}박 ${days}일`}
+                  {saved.plan.from && ` · ${formatKoreanDate(saved.plan.from)} 출발`}
+                </p>
+                <p className="mt-0.5 text-[11px] text-slate-400">
+                  {/* savedAt은 UTC ISO — KST 날짜로 변환해야 자정~09시 저장분이 안 밀린다 */}
+                  {formatKoreanDate(todayISOSeoul(new Date(saved.savedAt)))} 저장
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <Link
+                  href={`/plans/report?${encodePlanQuery(saved.plan, saved.name)}`}
+                  className="rounded-full bg-white px-4 py-1.5 text-xs font-bold text-teal-700 ring-1 ring-teal-200 transition-colors hover:bg-teal-50"
+                >
+                  계획 리포트
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => loadPlan(saved)}
+                  className="rounded-full bg-teal-600 px-4 py-1.5 text-xs font-bold text-white transition-colors hover:bg-teal-700"
+                >
+                  불러와서 수정
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm(`'${saved.name}' 계획을 삭제할까요?`)) {
+                      remove(saved.id);
+                    }
+                  }}
+                  aria-label={`${saved.name} 삭제`}
+                  className="rounded-full px-3 py-1.5 text-xs font-semibold text-slate-400 ring-1 ring-slate-200 transition-colors hover:bg-red-50 hover:text-red-500"
+                >
+                  삭제
+                </button>
+              </div>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <button
-                type="button"
-                onClick={() => loadPlan(saved)}
-                className="rounded-full bg-teal-600 px-4 py-1.5 text-xs font-bold text-white transition-colors hover:bg-teal-700"
-              >
-                불러와서 수정
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (window.confirm(`'${saved.name}' 계획을 삭제할까요?`)) {
-                    remove(saved.id);
-                  }
-                }}
-                aria-label={`${saved.name} 삭제`}
-                className="rounded-full px-3 py-1.5 text-xs font-semibold text-slate-400 ring-1 ring-slate-200 transition-colors hover:bg-red-50 hover:text-red-500"
-              >
-                삭제
-              </button>
+
+            {/* 일차별 스톱 체인 — 담긴 순서 그대로 (제목은 저장 스냅샷에 있음) */}
+            <div className="mt-3 space-y-1 border-t border-slate-100 pt-3">
+              {byDay.map((dayItems, i) =>
+                dayItems.length === 0 ? null : (
+                  <p key={i} className="text-xs leading-relaxed text-slate-600">
+                    {days > 1 && (
+                      <span className="mr-1 font-bold text-slate-400">
+                        {i + 1}일차
+                      </span>
+                    )}
+                    {dayItems.map((it, j) => (
+                      <span key={it.contentId}>
+                        {j > 0 && <span className="text-slate-300"> → </span>}
+                        <Link
+                          href={`/places/${it.contentId}`}
+                          className="font-semibold hover:text-teal-700 hover:underline"
+                        >
+                          {it.title}
+                        </Link>
+                      </span>
+                    ))}
+                  </p>
+                ),
+              )}
             </div>
+
+            {/* 루트 지도 — 펼칠 때만 마운트 (Leaflet 다중 인스턴스 비용 절약) */}
+            {saved.plan.items.length >= 2 && <RouteMapToggle saved={saved} />}
           </li>
         );
       })}
     </ul>
+  );
+}
+
+/** 카드 하단 루트 지도 토글 — 열 때만 CourseRouteMap을 마운트한다 */
+function RouteMapToggle({ saved }: { saved: SavedPlan }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="text-xs font-semibold text-slate-400 transition-colors hover:text-teal-600"
+      >
+        🗺 루트 지도 {open ? "접기" : "보기"}
+      </button>
+      {open && (
+        <div className="mt-2">
+          <CourseRouteMap
+            stops={saved.plan.items.map((it) => ({
+              title: it.title,
+              lat: it.lat,
+              lng: it.lng,
+            }))}
+          />
+        </div>
+      )}
+    </div>
   );
 }
