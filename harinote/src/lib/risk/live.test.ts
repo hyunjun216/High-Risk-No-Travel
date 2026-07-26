@@ -6,6 +6,18 @@ import { mockRiskInputFor } from "@/fixtures/safety/risk-inputs";
 import { latLngToGrid } from "@/lib/risk/kma-grid";
 import { SIGUNGU_SEATS } from "@/lib/risk/regions";
 
+/** 오늘(KST) YYYYMMDD — 예보 item의 fcstDate용 */
+function kstToday(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  })
+    .format(new Date())
+    .replaceAll("-", "");
+}
+
 const place = {
   contentId: 126508,
   envType: "outdoor_general" as const,
@@ -164,5 +176,75 @@ describe("getLiveRiskInput — 체감온도(apparentTempC) 반영", () => {
     expect(input.tempC).toBe(31);
     expect(input.apparentTempC).toBeUndefined();
     expect("apparentTempC" in input).toBe(false);
+  });
+});
+
+describe("getLiveRiskInput — 산악 격자 실패 시 시군 대표점 폴백", () => {
+  const mountainPlace = {
+    contentId: 126508,
+    envType: "outdoor_mountain" as const,
+    sigunguCode: 15, // 평창
+    lat: 37.6358,
+    lng: 128.3957,
+  };
+
+  beforeEach(() => {
+    vi.stubEnv("KMA_API_KEY", "test-kma-key");
+    vi.stubEnv("AIRKOREA_API_KEY", "test-airkorea-key");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("자기 격자가 429로 실패하면 mock이 아니라 시군 대표점 예보를 쓴다", async () => {
+    const own = latLngToGrid(mountainPlace.lat, mountainPlace.lng);
+    const seat = SIGUNGU_SEATS[15];
+    const seatGrid = latLngToGrid(seat.lat, seat.lng);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const u = new URL(String(url));
+        const nx = Number(u.searchParams.get("nx"));
+        const ny = Number(u.searchParams.get("ny"));
+        // AirKorea는 실패시켜 pm25는 논외로 둔다
+        if (!u.pathname.includes("VilageFcst")) throw new Error("airkorea down");
+        // 산악 자기 격자 → 429
+        if (nx === own.nx && ny === own.ny) {
+          return new Response("rate limit", { status: 429 });
+        }
+        // 시군 대표점 격자 → 정상 예보 (기온 19℃로 식별)
+        if (nx === seatGrid.nx && ny === seatGrid.ny) {
+          return new Response(
+            JSON.stringify({
+              response: {
+                header: { resultCode: "00" },
+                body: {
+                  items: {
+                    item: [
+                      { category: "TMP", fcstDate: kstToday(), fcstTime: "1500", fcstValue: "19" },
+                      { category: "POP", fcstDate: kstToday(), fcstTime: "1500", fcstValue: "10" },
+                      { category: "WSD", fcstDate: kstToday(), fcstTime: "1500", fcstValue: "2" },
+                    ],
+                  },
+                },
+              },
+            }),
+            { status: 200 },
+          );
+        }
+        throw new Error("unexpected grid");
+      }),
+    );
+
+    const input = await getLiveRiskInput(mountainPlace);
+    const mock = mockRiskInputFor(mountainPlace);
+
+    expect(input.tempC).toBe(19); // 대표점 실예보
+    expect(input.tempC).not.toBe(mock.tempC); // mock 누출 아님
+    expect(input.rainProbPct).toBe(10);
   });
 });

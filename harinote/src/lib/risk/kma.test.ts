@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { apparentTempSummerC } from "@/lib/risk/apparent-temp";
-import { parsePcp, pickBaseDateTime, summarizeDaily } from "@/lib/risk/kma";
+import { KMA_MAX_CONCURRENT, fetchKmaDailyWeather, parsePcp, pickBaseDateTime, summarizeDaily } from "@/lib/risk/kma";
 
 /** KST 시각 문자열로 Date 생성 — 테스트 머신 타임존에 무관 */
 function kst(iso: string): Date {
@@ -207,5 +207,45 @@ describe("summarizeDaily", () => {
     expect(summarizeDaily(covered, "20260705", false).tempC).toBe(31);
     // 오늘 조회(fallback 켬)는 저녁에 남은 시간대만 있어도 가드를 적용하지 않는다
     expect(summarizeDaily(truncated, "20260705").tempC).toBe(28);
+  });
+});
+
+describe("KMA_MAX_CONCURRENT — 동시 호출 상한", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("격자를 한꺼번에 요청해도 동시 in-flight가 상한을 넘지 않는다", async () => {
+    vi.stubEnv("KMA_API_KEY", "test-kma-key");
+
+    let inFlight = 0;
+    let peak = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        inFlight += 1;
+        peak = Math.max(peak, inFlight);
+        await new Promise((r) => setTimeout(r, 5));
+        inFlight -= 1;
+        return new Response(
+          JSON.stringify({
+            response: { header: { resultCode: "00" }, body: { items: { item: [] } } },
+          }),
+          { status: 200 },
+        );
+      }),
+    );
+
+    // 서로 다른 격자 60개를 동시에 — 실제 홈 렌더(149격자)의 축소판
+    await Promise.all(
+      Array.from({ length: 60 }, (_, i) =>
+        fetchKmaDailyWeather(60 + (i % 10), 125 + Math.floor(i / 10)),
+      ),
+    );
+
+    expect(peak).toBeLessThanOrEqual(KMA_MAX_CONCURRENT);
+    expect(peak).toBeGreaterThan(1); // 직렬화까지 가면 안 된다
   });
 });

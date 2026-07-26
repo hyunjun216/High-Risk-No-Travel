@@ -341,6 +341,31 @@ async function fetchKmaGridItemsRaw(
  */
 const cache = createTtlCache<KmaItem[]>(60 * 60 * 1000, 5 * 60 * 1000);
 
+/**
+ * 동시 호출 상한 — data.go.kr은 순간 동시 요청이 몰리면 HTTP 429를 돌려준다.
+ * 홈 안전지도는 콜드 캐시에서 149격자(산악형 자기 좌표 포함)를 한꺼번에 요청해
+ * 90건이 429로 떨어졌고, 실패분이 mock으로 폴백되면서 새로고침마다 시군 점수가
+ * 20점대로 요동쳤다. 실측(2026-07-26): 동시 20건까지 429 없음 → 여유를 둬 12.
+ */
+export const KMA_MAX_CONCURRENT = 12;
+
+let inFlight = 0;
+const waiting: (() => void)[] = [];
+
+/** 세마포어 — 상한을 넘는 호출은 앞선 호출이 끝날 때까지 대기시킨다 */
+async function withConcurrencyLimit<T>(fn: () => Promise<T>): Promise<T> {
+  if (inFlight >= KMA_MAX_CONCURRENT) {
+    await new Promise<void>((resolve) => waiting.push(resolve));
+  }
+  inFlight += 1;
+  try {
+    return await fn();
+  } finally {
+    inFlight -= 1;
+    waiting.shift()?.();
+  }
+}
+
 /** 격자(nx, ny)의 날씨 요약 — targetDate(YYYYMMDD) 미지정 시 오늘. 1시간 메모리 캐시 */
 export async function fetchKmaDailyWeather(
   nx: number,
@@ -348,7 +373,7 @@ export async function fetchKmaDailyWeather(
   targetDate?: string,
 ): Promise<KmaDailyWeather> {
   const items = await cache.get(`${nx},${ny}`, () =>
-    fetchKmaGridItemsRaw(nx, ny, new Date()),
+    withConcurrencyLimit(() => fetchKmaGridItemsRaw(nx, ny, new Date())),
   );
   return summarizeDaily(
     items,

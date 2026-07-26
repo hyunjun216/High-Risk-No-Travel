@@ -75,8 +75,22 @@ export async function getLiveRiskInput(
         ),
   ]);
 
-  if (weather.status === "fulfilled") {
-    const w = weather.value;
+  // 자기 좌표 격자(산악형)가 실패하면 시군 대표점 예보로 폴백한다.
+  // mock으로 떨어뜨리면 데모용 극단 시나리오(폭염 36℃·호우 80mm)가 실서비스 점수에
+  // 섞여 새로고침마다 등급이 뒤집힌다 — 인접 실측이 언제나 mock보다 낫다.
+  let weatherValue = weather.status === "fulfilled" ? weather.value : undefined;
+  if (weatherValue === undefined && place.sigunguCode !== undefined) {
+    const seat = SIGUNGU_SEATS[place.sigunguCode];
+    const seatGrid = seat ? latLngToGrid(seat.lat, seat.lng) : undefined;
+    if (seatGrid && (seatGrid.nx !== nx || seatGrid.ny !== ny)) {
+      weatherValue = await fetchKmaDailyWeather(seatGrid.nx, seatGrid.ny).catch(
+        () => undefined,
+      );
+    }
+  }
+
+  if (weatherValue !== undefined) {
+    const w = weatherValue;
     // 핵심값이 하나도 없는 빈 응답(발표 직후 등)은 실데이터로 취급하지 않고 mock 전체 유지
     // — 일부만 덮어쓰면 mock 기온 + 실측 강수 같은 혼종 상태가 된다
     const hasCore =
@@ -113,12 +127,13 @@ export async function getLiveRiskInput(
   // score.ts가 max(프록시, 공식)으로 상향 반영한다 (없으면 미설정 → 프록시 유지).
   // TODO(landslide): 승인 후 fetchLandslideAlert(sigunguCode) 추가 — 스모크로 응답 필드 확정 뒤 배선.
 
-  if (weather.status === "rejected" && pm25.status === "rejected") {
+  if (weatherValue === undefined && pm25.status === "rejected") {
     if (!warnedAllSourcesFailed) {
       warnedAllSourcesFailed = true;
+      const reason = weather.status === "rejected" ? weather.reason : undefined;
       console.warn(
         "[risk/live] 기상청·AirKorea 조회가 모두 실패해 mock 위험 입력으로 대체합니다.",
-        weather.reason instanceof Error ? weather.reason.message : weather.reason,
+        reason instanceof Error ? reason.message : reason,
       );
     }
   }
