@@ -364,11 +364,11 @@ export default async function PlacesPage({ searchParams }: Props) {
 
       {/* 우: 내 여행 계획 (lg에서만 sticky — 모바일은 하단 서랍) */}
       <div className="order-3 hidden lg:sticky lg:top-20 lg:block lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
-        <TravelPlannerPanel courseAutoOpen={courseOpen} courseSigungu={sigunguCode} />
+        <TravelPlannerPanel courseAutoOpen={courseOpen} courseSigungu={sigunguCode} courseDate={date} />
       </div>
 
       {/* 모바일 계획 서랍 (lg:hidden 내장) */}
-      <PlannerDrawer />
+      <PlannerDrawer courseDate={date} />
     </div>
   );
 }

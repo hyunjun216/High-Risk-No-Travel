@@ -37,9 +37,11 @@ interface Props {
   autoOpen?: boolean;
   /** autoOpen 시 미리 선택할 시군 코드 (?sigungu=N) */
   initialSigungu?: number;
+  /** 목록의 선택 날짜(?date=) — 있으면 코스도 같은 날짜 점수로 생성 (한 화면 두 점수 방지) */
+  date?: string;
 }
 
-export default function CourseRecommendModal({ autoOpen = false, initialSigungu }: Props) {
+export default function CourseRecommendModal({ autoOpen = false, initialSigungu, date }: Props) {
   const [open, setOpen] = useState(autoOpen);
   const [sigungu, setSigungu] = useState<number | undefined>(
     autoOpen ? initialSigungu : undefined,
@@ -57,14 +59,29 @@ export default function CourseRecommendModal({ autoOpen = false, initialSigungu 
     () => false,
   );
 
+  // 모달 열림 중: ESC로 닫기 + 배경 페이지 스크롤 잠금 (aria-modal 선언과 실동작 일치)
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
   const load = (nextSigungu: number, nextProfile: Profile) => {
-    const key = `${nextSigungu}:${nextProfile}`;
+    const key = `${nextSigungu}:${nextProfile}:${date ?? "today"}`;
     // 서버 액션은 클라이언트당 순차 디스패치라 마지막 요청이 마지막에 반영된다 —
     // 같은 키 재요청도 서버 캐시(10분)를 타므로 스킵 없이 항상 최신으로 수렴시킨다
     setFailed(false);
     startTransition(async () => {
       try {
-        const data = await recommendCourses(nextSigungu, nextProfile);
+        const data = await recommendCourses(nextSigungu, nextProfile, date);
         setResult({ key, data });
         // 앞선 요청의 실패가 나중에 정착해도 최신 성공 결과를 가리지 않게 해제
         setFailed(false);
@@ -87,14 +104,14 @@ export default function CourseRecommendModal({ autoOpen = false, initialSigungu 
     if (!autoOpen || initialSigungu === undefined) return;
     startTransition(async () => {
       try {
-        const data = await recommendCourses(initialSigungu, "default");
-        setResult({ key: `${initialSigungu}:default`, data });
+        const data = await recommendCourses(initialSigungu, "default", date);
+        setResult({ key: `${initialSigungu}:default:${date ?? "today"}`, data });
         setFailed(false);
       } catch {
         setFailed(true);
       }
     });
-  }, [autoOpen, initialSigungu]);
+  }, [autoOpen, initialSigungu, date]);
 
   const toggleProfile = (who: "kids" | "seniors") => {
     const next = toggled(profile, who);
@@ -103,7 +120,7 @@ export default function CourseRecommendModal({ autoOpen = false, initialSigungu 
   };
 
   const ready =
-    sigungu !== undefined && result?.key === `${sigungu}:${profile}`
+    sigungu !== undefined && result?.key === `${sigungu}:${profile}:${date ?? "today"}`
       ? result.data
       : undefined;
   const themesToShow: readonly CourseTheme[] = theme ? [theme] : COURSE_THEMES;
@@ -149,7 +166,7 @@ export default function CourseRecommendModal({ autoOpen = false, initialSigungu 
               </button>
             </div>
 
-            <div className="overflow-y-auto p-4 sm:p-5">
+            <div className="overscroll-contain overflow-y-auto p-4 sm:p-5">
               {/* ── 조건 선택 ── */}
               <section>
                 <h3 className="text-xs font-bold uppercase tracking-wide text-slate-400">
@@ -305,9 +322,9 @@ export default function CourseRecommendModal({ autoOpen = false, initialSigungu 
                       );
                     })}
                     <p className="text-xs leading-relaxed text-slate-400">
-                      코스는 오늘의 안전 점수를 기준으로 자동 생성된 참고
-                      정보이며 안전을 보장하지 않습니다. 방문 전 기상특보와 현지
-                      안내를 확인하세요.
+                      코스는 {date ? `${date} 기준` : "오늘의"} 안전 점수를
+                      기준으로 자동 생성된 참고 정보이며 안전을 보장하지
+                      않습니다. 방문 전 기상특보와 현지 안내를 확인하세요.
                     </p>
                   </div>
                 )}

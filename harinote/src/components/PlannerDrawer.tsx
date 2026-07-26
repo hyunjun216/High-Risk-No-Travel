@@ -8,7 +8,12 @@ import { useTravelPlan } from "@/hooks/useTravelPlan";
  * 모바일 전용 계획 서랍 — 하단 고정 "내 계획(N)" 버튼 + bottom sheet.
  * 데스크톱(lg+)에서는 우측 패널을 쓰므로 숨긴다.
  */
-export default function PlannerDrawer() {
+interface Props {
+  /** 목록의 선택 날짜(?date=) — 서랍 속 코스 추천도 같은 날짜 점수로 */
+  courseDate?: string;
+}
+
+export default function PlannerDrawer({ courseDate }: Props) {
   const { count, hydrated } = useTravelPlan();
   const [open, setOpen] = useState(false);
 
@@ -41,7 +46,7 @@ export default function PlannerDrawer() {
             >
               닫기 ✕
             </button>
-            <TravelPlannerPanel compact />
+            <TravelPlannerPanel compact courseDate={courseDate} />
           </div>
         </div>
       )}

@@ -26,10 +26,12 @@ interface Props {
   /** ?course=1 진입 시 AI 코스 추천 팝업을 열린 채 시작 (데스크톱 패널에만 전달) */
   courseAutoOpen?: boolean;
   courseSigungu?: number;
+  /** 목록의 선택 날짜(?date=) — 코스 추천도 같은 날짜 점수로 (한 화면 두 점수 방지) */
+  courseDate?: string;
 }
 
-export default function TravelPlannerPanel({ compact = false, courseAutoOpen, courseSigungu }: Props) {
-  const { plan, hydrated, add, remove, move, moveToDay, setActiveDay, setTrip, clear, count, days, activeDay, byDay } =
+export default function TravelPlannerPanel({ compact = false, courseAutoOpen, courseSigungu, courseDate }: Props) {
+  const { plan, hydrated, add, has, remove, move, moveToDay, setActiveDay, setTrip, clear, count, days, activeDay, byDay } =
     useTravelPlan();
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dropActive, setDropActive] = useState(false);
@@ -38,14 +40,15 @@ export default function TravelPlannerPanel({ compact = false, courseAutoOpen, co
   const { save } = useSavedPlans();
   const [saving, setSaving] = useState(false);
   const [saveName, setSaveName] = useState("");
-  const [savedFlash, setSavedFlash] = useState(false);
+  const [savedFlash, setSavedFlash] = useState<"ok" | "fail" | null>(null);
   const defaultName = plan.from ? `${formatKoreanDate(plan.from)} 여행` : "내 여행 계획";
   const confirmSave = () => {
     if (plan.items.length === 0) return; // 비운 직후 잔류 폼에서 빈 계획 저장 방지
-    save(saveName.trim() || defaultName, plan);
+    // 저장 실패(쿼터·차단)를 성공으로 표시하지 않는다 — 무통보 데이터 손실 방지
+    const ok = save(saveName.trim() || defaultName, plan);
     setSaving(false);
-    setSavedFlash(true);
-    setTimeout(() => setSavedFlash(false), 2000);
+    setSavedFlash(ok ? "ok" : "fail");
+    setTimeout(() => setSavedFlash(null), 2000);
   };
 
   // 카드에서 온 드롭 페이로드 파싱 (없으면 null = 내부 순서변경)
@@ -95,10 +98,18 @@ export default function TravelPlannerPanel({ compact = false, courseAutoOpen, co
                 setSaving((v) => !v);
               }}
               className={`text-xs font-semibold transition-colors ${
-                savedFlash ? "text-teal-600" : "text-slate-400 hover:text-teal-600"
+                savedFlash === "ok"
+                  ? "text-teal-600"
+                  : savedFlash === "fail"
+                    ? "text-red-500"
+                    : "text-slate-400 hover:text-teal-600"
               }`}
             >
-              {savedFlash ? "✓ 저장했어요" : "저장"}
+              {savedFlash === "ok"
+                ? "✓ 저장했어요"
+                : savedFlash === "fail"
+                  ? "저장 못 했어요"
+                  : "저장"}
             </button>
             <button
               type="button"
@@ -143,7 +154,7 @@ export default function TravelPlannerPanel({ compact = false, courseAutoOpen, co
 
       {/* AI 코스 추천 — 팝업에서 테마·시군·프로필 선택 후 활성 일차에 담기 */}
       <div className="border-b border-slate-100 px-4 py-2.5">
-        <CourseRecommendModal autoOpen={courseAutoOpen} initialSigungu={courseSigungu} />
+        <CourseRecommendModal autoOpen={courseAutoOpen} initialSigungu={courseSigungu} date={courseDate} />
       </div>
 
       {/* 여행 일수·출발일 설정 — localStorage 계획에만 반영 (일차 탭·날짜 라벨) */}
@@ -184,11 +195,13 @@ export default function TravelPlannerPanel({ compact = false, courseAutoOpen, co
                 if (e.dataTransfer.types.includes(PLAN_DRAG_TYPE)) e.preventDefault();
               }}
               onDrop={(e) => {
-                // 다른 일차 탭 위로 카드를 떨어뜨리면 그 일차로 담김
+                // 다른 일차 탭 위로 카드를 떨어뜨리면 그 일차로 담김.
+                // 이미 담긴 카드면 add가 no-op이라 탭만 바뀌는 착시가 생김 → 일차 이동으로 처리
                 const item = parseCardDrop(e);
                 if (item) {
                   e.preventDefault();
-                  add(item, d);
+                  if (has(item.contentId)) moveToDay(item.contentId, d);
+                  else add(item, d);
                   setActiveDay(d);
                 }
               }}
@@ -240,7 +253,15 @@ export default function TravelPlannerPanel({ compact = false, courseAutoOpen, co
                 <li
                   key={it.contentId}
                   draggable
-                  onDragStart={() => setDragIndex(globalIdx)}
+                  onDragStart={(e) => {
+                    // Firefox는 dragstart에서 데이터가 없으면 드래그를 시작하지 않는다
+                    e.dataTransfer.setData("text/plain", it.title);
+                    e.dataTransfer.effectAllowed = "move";
+                    setDragIndex(globalIdx);
+                  }}
+                  // 취소(Esc)·바깥 드롭 포함 어떤 종료에서도 잔류 dragIndex 정리 —
+                  // 남아 있으면 이후 무관한 드래그가 onDrop에서 순서를 뒤섞는다
+                  onDragEnd={() => setDragIndex(null)}
                   onDragOver={(e) => {
                     // 내부 순서변경일 때만 이 항목이 드롭을 받는다
                     if (dragIndex !== null) e.preventDefault();
