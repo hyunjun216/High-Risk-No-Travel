@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import CourseRouteMap from "@/components/CourseRouteMap";
 import CourseRecommendModal from "@/components/CourseRecommendModal";
@@ -57,7 +57,9 @@ export default function TravelPlannerPanel({
 }: Props) {
   const { plan, hydrated, add, has, remove, move, moveToDay, replace, setActiveDay, setTrip, clear, count, days, activeDay, byDay } =
     useTravelPlan();
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  // 드래그 중 다른 탭/인스턴스가 계획을 바꿔도 안전하도록 인덱스가 아닌
+  // contentId를 기억하고, 이동할 인덱스는 드롭 시점의 최신 계획에서 계산한다
+  const [dragId, setDragId] = useState<number | null>(null);
   const [dropActive, setDropActive] = useState(false);
 
   // 계획 저장 — 인라인 이름 입력 → useSavedPlans에 스냅샷 기록
@@ -65,6 +67,13 @@ export default function TravelPlannerPanel({
   const [saving, setSaving] = useState(false);
   const [saveName, setSaveName] = useState("");
   const [savedFlash, setSavedFlash] = useState<"ok" | "fail" | null>(null);
+  // 연속 저장 시 이전 2초 타이머가 새 표시(특히 실패)를 조기에 지우지 않도록 정리
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (flashTimer.current) clearTimeout(flashTimer.current);
+    };
+  }, []);
   const defaultName = plan.from ? `${formatKoreanDate(plan.from)} 여행` : "내 여행 계획";
   const confirmSave = () => {
     if (plan.items.length === 0) return; // 비운 직후 잔류 폼에서 빈 계획 저장 방지
@@ -72,7 +81,8 @@ export default function TravelPlannerPanel({
     const ok = save(saveName.trim() || defaultName, plan);
     setSaving(false);
     setSavedFlash(ok ? "ok" : "fail");
-    setTimeout(() => setSavedFlash(null), 2000);
+    if (flashTimer.current) clearTimeout(flashTimer.current);
+    flashTimer.current = setTimeout(() => setSavedFlash(null), 2000);
   };
 
   // 계획 안전 진단 — 스톱별 일차 날짜 재채점 + 주의 스톱 교체 후보
@@ -134,12 +144,16 @@ export default function TravelPlannerPanel({
     }
   }
 
-  // 드롭존(빈 공간·컨테이너)에 카드가 떨어지면 활성 일차로 추가
+  // 드롭존(빈 공간·컨테이너)에 카드가 떨어지면 활성 일차로 추가.
+  // 이미 담긴 카드면 add가 no-op이라 아무 일도 안 일어남 → 일차 탭 드롭과
+  // 같은 규칙으로 "현재 일차로 이동" 처리
   function onZoneDrop(e: React.DragEvent) {
     e.preventDefault();
     setDropActive(false);
     const item = parseCardDrop(e);
-    if (item) add(item, activeDay);
+    if (!item) return;
+    if (has(item.contentId)) moveToDay(item.contentId, activeDay);
+    else add(item, activeDay);
   }
 
   const dayLabel = (d: number) => {
@@ -382,14 +396,14 @@ export default function TravelPlannerPanel({
                     // Firefox는 dragstart에서 데이터가 없으면 드래그를 시작하지 않는다
                     e.dataTransfer.setData("text/plain", it.title);
                     e.dataTransfer.effectAllowed = "move";
-                    setDragIndex(globalIdx);
+                    setDragId(it.contentId);
                   }}
-                  // 취소(Esc)·바깥 드롭 포함 어떤 종료에서도 잔류 dragIndex 정리 —
+                  // 취소(Esc)·바깥 드롭 포함 어떤 종료에서도 잔류 dragId 정리 —
                   // 남아 있으면 이후 무관한 드래그가 onDrop에서 순서를 뒤섞는다
-                  onDragEnd={() => setDragIndex(null)}
+                  onDragEnd={() => setDragId(null)}
                   onDragOver={(e) => {
                     // 내부 순서변경일 때만 이 항목이 드롭을 받는다
-                    if (dragIndex !== null) e.preventDefault();
+                    if (dragId !== null) e.preventDefault();
                   }}
                   onDrop={(e) => {
                     const item = parseCardDrop(e);
@@ -399,10 +413,15 @@ export default function TravelPlannerPanel({
                     }
                     e.preventDefault();
                     e.stopPropagation();
-                    if (dragIndex !== null && dragIndex !== globalIdx) {
-                      move(dragIndex, globalIdx);
+                    // 드롭 시점의 최신 계획에서 인덱스 계산 — 항목이 사라졌으면 -1 → reorder no-op
+                    const fromIdx =
+                      dragId !== null
+                        ? plan.items.findIndex((p) => p.contentId === dragId)
+                        : -1;
+                    if (fromIdx >= 0 && fromIdx !== globalIdx) {
+                      move(fromIdx, globalIdx);
                     }
-                    setDragIndex(null);
+                    setDragId(null);
                   }}
                   className={`rounded-lg bg-slate-50 px-2.5 py-2 ring-1 ${
                     risky ? "ring-amber-300" : "ring-slate-100"

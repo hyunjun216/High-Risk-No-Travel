@@ -3,6 +3,7 @@
  * 훅(useTravelPlan)이 이 함수들로 상태를 조작한다.
  */
 import { haversineKm } from "@/lib/reco/distance";
+import { isValidISODate } from "@/lib/date";
 
 export interface PlanItem {
   contentId: number;
@@ -198,6 +199,13 @@ export function isValidPlan(v: unknown): v is TravelPlan {
   if (!Array.isArray(p.items)) return false;
   // nights 음수·NaN·소수가 통과하면 totalDays≤0 → itemsByDay의 groups[-1].push 크래시
   if (!isOptionalIntAtLeast(p.nights, 0)) return false;
+  // from이 날짜가 아니면 dateOfDay의 toISOString()이 RangeError → 플래너 렌더 크래시
+  if (
+    p.from !== undefined &&
+    (typeof p.from !== "string" || !isValidISODate(p.from))
+  ) {
+    return false;
+  }
   if (!isOptionalIntAtLeast(p.activeDay, 1)) return false;
   return p.items.every(
     (it) =>

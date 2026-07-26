@@ -80,10 +80,13 @@ export default function SavedPlansList() {
                   {saved.plan.items.length}곳 · {days === 1 ? "당일치기" : `${days - 1}박 ${days}일`}
                   {saved.plan.from && ` · ${formatKoreanDate(saved.plan.from)} 출발`}
                 </p>
-                <p className="mt-0.5 text-[11px] text-slate-400">
-                  {/* savedAt은 UTC ISO — KST 날짜로 변환해야 자정~09시 저장분이 안 밀린다 */}
-                  {formatKoreanDate(todayISOSeoul(new Date(saved.savedAt)))} 저장
-                </p>
+                {/* savedAt은 UTC ISO — KST 날짜로 변환해야 자정~09시 저장분이 안 밀린다.
+                    손상된 값이면 날짜 포맷터가 RangeError로 던지므로 줄 자체를 숨긴다 */}
+                {!Number.isNaN(Date.parse(saved.savedAt)) && (
+                  <p className="mt-0.5 text-[11px] text-slate-400">
+                    {formatKoreanDate(todayISOSeoul(new Date(saved.savedAt)))} 저장
+                  </p>
+                )}
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <Link

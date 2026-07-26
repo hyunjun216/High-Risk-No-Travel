@@ -8,6 +8,7 @@ vi.mock("@/lib/datasource", () => ({
 
 import { recommendCourses } from "./recommend-action";
 import { getPlacesWithSafety, getPlacesWithSafetyOnDate } from "@/lib/datasource";
+import { addDaysISO, todayISOSeoul } from "@/lib/date";
 
 describe("recommendCourses — 공개 엔드포인트 입력 검증", () => {
   it("프로토타입 체인 키(constructor 등)를 거부한다", async () => {
@@ -31,8 +32,9 @@ describe("recommendCourses — 공개 엔드포인트 입력 검증", () => {
     vi.mocked(getPlacesWithSafetyOnDate).mockClear();
     vi.mocked(getPlacesWithSafety).mockClear();
 
-    // 내일 (parseDate 허용 범위) — 실제 날짜에 의존하지 않게 동적 생성
-    const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+    // 내일 (parseDate 허용 범위) — parseDate가 KST 기준이므로 UTC(toISOString)로
+    // 만들면 KST 자정~09시 사이에 "오늘"이 되어 실패한다 → 앱과 같은 KST 유틸 사용
+    const tomorrow = addDaysISO(todayISOSeoul(), 1);
     await recommendCourses(13, "default", tomorrow);
     expect(getPlacesWithSafetyOnDate).toHaveBeenCalledWith("default", tomorrow);
 

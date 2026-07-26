@@ -174,6 +174,13 @@ describe("isValidPlan", () => {
     expect(isValidPlan({ items: [], nights: 0 })).toBe(true);
   });
 
+  it("from 손상 값 거부 — dateOfDay의 toISOString RangeError 방어", () => {
+    expect(isValidPlan({ items: [A], from: "yesterday" })).toBe(false);
+    expect(isValidPlan({ items: [A], from: "2026-02-31" })).toBe(false);
+    expect(isValidPlan({ items: [A], from: 20260801 })).toBe(false);
+    expect(isValidPlan({ items: [A], from: "2026-08-01" })).toBe(true);
+  });
+
   it("손상 계획이 통과하면 itemsByDay가 던진다 (방어가 필요한 이유)", () => {
     // isValidPlan이 걸러주지 않으면 이 호출이 크래시함을 문서화
     expect(() => itemsByDay({ items: [A], nights: -1 })).toThrow();
