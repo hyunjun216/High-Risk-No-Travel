@@ -22,6 +22,7 @@ import PlaceMap from "@/components/PlaceMap";
 import { GallerySection, OverviewSection, PetSection, ReviewsSection } from "./sections";
 import { kidsAmenityLabels, kidsInfoOf } from "@/lib/tour/kids-friendly";
 import { summaryOf } from "@/lib/tour/summaries";
+import AddToPlanButton from "@/components/AddToPlanButton";
 import ProfileChips from "@/components/ProfileChips";
 import RiskBreakdownBar from "@/components/RiskBreakdownBar";
 import SafetyScoreBadge from "@/components/SafetyScoreBadge";
@@ -246,6 +247,15 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
               </div>
             )}
             <div className="mt-3 flex flex-wrap gap-2">
+              <AddToPlanButton
+                item={{
+                  contentId: place.contentId,
+                  title: place.title,
+                  lat: place.lat,
+                  lng: place.lng,
+                  score: safety.score,
+                }}
+              />
               <Link
                 href={`/places/${place.contentId}/report${buildQuery({ profile: profileParam(profile) })}`}
                 className="inline-flex items-center gap-1.5 rounded-full bg-teal-50 px-4 py-1.5 text-sm font-semibold text-teal-700 ring-1 ring-teal-200 transition-colors hover:bg-teal-100"

@@ -124,7 +124,8 @@ export default async function PlacesPage({ searchParams }: Props) {
     `/places${buildQuery({ ...currentParams, page: p === 1 ? undefined : p })}`;
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 lg:grid lg:grid-cols-[240px_minmax(0,1fr)_320px] lg:items-start lg:gap-6">
+    // 모바일: flex-col + order로 검색 결과가 인기 TOP10보다 먼저 (블록 레이아웃에선 order가 무시됨)
+    <div className="mx-auto flex max-w-7xl flex-col px-4 py-8 lg:grid lg:grid-cols-[240px_minmax(0,1fr)_320px] lg:items-start lg:gap-6">
       {/* 좌: 인기 관광지 (lg에서 왼쪽 sticky, 모바일은 본문 아래) */}
       <div className="order-2 mt-10 lg:order-1 lg:mt-0 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
         <PopularSidebar profile={profile} />
