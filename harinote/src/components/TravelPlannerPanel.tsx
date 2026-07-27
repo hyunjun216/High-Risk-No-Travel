@@ -47,6 +47,8 @@ interface Props {
   /** 안전 진단에 쓰는 동행 프로필·이동수단 — 목록 화면의 현재 조건과 동일하게 */
   profile?: Profile;
   transport?: Transport;
+  /** 검색 필터의 시군 복수선택 — 코스 추천 모달의 지역 초기값·그룹 표시용 */
+  sigunguCodes?: number[];
 }
 
 export default function TravelPlannerPanel({
@@ -54,6 +56,7 @@ export default function TravelPlannerPanel({
   courseDate,
   profile = "default",
   transport = "transit",
+  sigunguCodes = [],
 }: Props) {
   const { plan, hydrated, add, has, remove, move, moveToDay, replace, setActiveDay, setTrip, clear, count, days, activeDay, byDay } =
     useTravelPlan();
@@ -246,11 +249,22 @@ export default function TravelPlannerPanel({
         </form>
       )}
 
-      {/* AI 코스 추천 — 팝업에서 테마·시군·프로필 선택 후 활성 일차에 담기 */}
+      {/* AI 코스 추천 — 팝업에서 테마·지역 선택 후 활성 일차에 담기 (동행·이동수단은 검색 필터 상속) */}
       <div className="space-y-2 border-b border-slate-100 px-4 py-2.5">
-        <CourseRecommendModal date={courseDate} />
+        <CourseRecommendModal
+          date={courseDate}
+          profile={profile}
+          transport={transport}
+          sigunguCodes={sigunguCodes}
+        />
         {/* N박이면 전체 일정(일차별 코스 + 밤 숙소) 추천도 제공 */}
-        {hydrated && days > 1 && <MultiDayCourseModal profile={profile} />}
+        {hydrated && days > 1 && (
+          <MultiDayCourseModal
+            profile={profile}
+            transport={transport}
+            sigunguCodes={sigunguCodes}
+          />
+        )}
       </div>
 
       {/* 여행 일수·출발일 설정 — localStorage 계획에만 반영 (일차 탭·날짜 라벨) */}

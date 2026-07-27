@@ -70,6 +70,13 @@ export const LUNCH_RADIUS_KM = 10;
 /** 오후 스톱 탐색 반경 (직전 스톱 기준) — half-day.ts와 동일 (multi-day.ts도 공유) */
 export const AFTERNOON_RADIUS_KM = 15;
 /**
+ * 자차 이동 시 스톱 탐색 반경 배율 — half-day.ts의 radiusScale 관례(자차 ×1.5,
+ * 점심 15km·오후 22.5km)와 동일. 대체지의 30→50km(alternatives.ts CAR_DISTANCE_KM)와
+ * 같은 취지의 "자차는 더 넓게" 차등. 상세 페이지(places/[contentId])는 인라인 1.5를
+ * 쓰고 있다 — 값 변경 시 함께 맞출 것.
+ */
+export const CAR_COURSE_RADIUS_SCALE = 1.5;
+/**
  * 오후 후보가 코스 테마와 같은 유형이면 주는 소폭 가점.
  * 감점 가중치가 아닌 UI 추천 우대 값이라 weights.ts가 아닌 여기에 둔다
  * (half-day.ts의 SAME_CAT3_BONUS와 같은 수준).
@@ -150,6 +157,8 @@ function buildThemedCourse(
   theme: CourseTheme,
   sigunguCode: number,
   all: PlaceWithSafety[],
+  /** 이동수단별 반경 배율 — 자차 CAR_COURSE_RADIUS_SCALE (half-day.ts 관례) */
+  radiusScale = 1,
 ): ThemedCourse | null {
   const used = new Set<number>();
 
@@ -170,7 +179,9 @@ function buildThemedCourse(
     // 점심 슬롯은 식사 목적 — 카페/전통찻집(A05020900)은 제외
     if (c.cat3 === CAT3_CAFE) return null;
     const km = haversineKm(anchor.lat, anchor.lng, c.lat, c.lng);
-    return km <= LUNCH_RADIUS_KM ? { score: c.safety.score, km } : null;
+    return km <= LUNCH_RADIUS_KM * radiusScale
+      ? { score: c.safety.score, km }
+      : null;
   });
   const lunch = lunchPicks[0];
   for (const p of lunchPicks) used.add(p.contentId);
@@ -183,7 +194,7 @@ function buildThemedCourse(
   const afternoonPicks = selectTopCandidates(all, used, 3, (c) => {
     if (c.contentTypeId !== 12 && c.contentTypeId !== 14) return null;
     const km = haversineKm(from.lat, from.lng, c.lat, c.lng);
-    if (km > AFTERNOON_RADIUS_KM) return null;
+    if (km > AFTERNOON_RADIUS_KM * radiusScale) return null;
     // 실내 우선은 점수·거리보다 앞서야 하므로 큰 오프셋으로 계층화
     const indoorOffset = preferIndoor && c.envType === "indoor" ? 1000 : 0;
     const themeBonus = matchesTheme(c, theme) ? SAME_THEME_BONUS : 0;
@@ -236,11 +247,12 @@ export const COURSE_THEMES: readonly CourseTheme[] = [
 export function buildThemedCourses(
   sigunguCode: number,
   all: PlaceWithSafety[],
+  radiusScale = 1,
 ): Record<CourseTheme, ThemedCourse | null> {
   return {
-    nature: buildThemedCourse("nature", sigunguCode, all),
-    water: buildThemedCourse("water", sigunguCode, all),
-    culture: buildThemedCourse("culture", sigunguCode, all),
+    nature: buildThemedCourse("nature", sigunguCode, all, radiusScale),
+    water: buildThemedCourse("water", sigunguCode, all, radiusScale),
+    culture: buildThemedCourse("culture", sigunguCode, all, radiusScale),
   };
 }
 

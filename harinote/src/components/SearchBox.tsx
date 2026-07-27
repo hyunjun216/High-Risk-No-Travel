@@ -8,6 +8,8 @@ interface Props {
   date?: string;
   /** 기간 종료 날짜 — hidden으로 검색 결과에 유지 */
   end?: string;
+  /** 시군 필터(콤마 구분 코드) — hidden으로 검색 결과에 유지 */
+  sigungu?: string;
   compact?: boolean;
 }
 
@@ -17,6 +19,7 @@ export default function SearchBox({
   profile = "default",
   date,
   end,
+  sigungu,
   compact = false,
 }: Props) {
   return (
@@ -54,6 +57,7 @@ export default function SearchBox({
         )}
         {date && <input type="hidden" name="date" value={date} />}
         {end && <input type="hidden" name="end" value={end} />}
+        {sigungu && <input type="hidden" name="sigungu" value={sigungu} />}
         <button
           type="submit"
           className={`shrink-0 rounded-xl bg-teal-600 font-bold text-white transition-colors hover:bg-teal-700 ${

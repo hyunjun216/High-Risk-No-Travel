@@ -4,10 +4,13 @@
  * N박 전체 일정 추천 모달 — 플래너 패널에서 열어 시군·테마를 고르면
  * 플래너의 박수·출발일 기준으로 일차별 스톱 + 밤 숙소를 추천하고,
  * "계획에 반영"으로 전 일차를 통째로 채운다 (숙소는 참고 표시만).
+ * 동행·이동수단은 검색 필터(여행 조건 패널)에서 자동 상속.
  */
-import { useState, useTransition } from "react";
+import { useState, useSyncExternalStore, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { useTravelPlan } from "@/hooks/useTravelPlan";
-import { SIGUNGU_SEATS } from "@/lib/risk/regions";
+import CourseSigunguPicker from "@/components/CourseSigunguPicker";
+import { courseConditionParts } from "@/components/travel-condition";
 import { COURSE_THEME_META, type CourseTheme } from "@/lib/course/themed";
 import {
   recommendMultiDayCourse,
@@ -15,6 +18,7 @@ import {
 } from "@/lib/course/multi-day-action";
 import { formatKoreanDate } from "@/lib/date";
 import type { Profile } from "@/lib/safety/types";
+import type { Transport } from "@/lib/prefs";
 import type { PlanItem, TravelPlan } from "@/lib/travel-plan";
 
 const SLOT_EMOJI: Record<string, string> = {
@@ -29,7 +33,17 @@ const GRADE_TEXT: Record<string, string> = {
   high: "text-red-600",
 };
 
-export default function MultiDayCourseModal({ profile }: { profile: Profile }) {
+export default function MultiDayCourseModal({
+  profile,
+  transport,
+  sigunguCodes,
+}: {
+  profile: Profile;
+  /** 검색 필터에서 상속 — 자차면 코스 스톱 반경 확대 */
+  transport: Transport;
+  /** 검색 필터의 시군 복수선택 — 1곳이면 자동 선택, 2곳 이상이면 그룹 우선 표시 */
+  sigunguCodes: number[];
+}) {
   const { plan, replace, days } = useTravelPlan();
   const [open, setOpen] = useState(false);
   const [sigungu, setSigungu] = useState<number | undefined>();
@@ -37,6 +51,12 @@ export default function MultiDayCourseModal({ profile }: { profile: Profile }) {
   const [result, setResult] = useState<MultiDayCourseDto | null>(null);
   const [failed, setFailed] = useState(false);
   const [isPending, startTransition] = useTransition();
+  // SSR에서 document.body를 참조하지 않도록 포털 렌더를 마운트 후로 미룬다
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
 
   const load = (code: number, t: CourseTheme) => {
     startTransition(async () => {
@@ -47,6 +67,7 @@ export default function MultiDayCourseModal({ profile }: { profile: Profile }) {
           profile,
           days,
           from: plan.from,
+          transport,
         });
         setResult(data);
         setFailed(data === null);
@@ -63,6 +84,15 @@ export default function MultiDayCourseModal({ profile }: { profile: Profile }) {
     if (code !== undefined) setSigungu(code);
     if (t !== undefined) setTheme(t);
     if (nextCode !== undefined) load(nextCode, nextTheme);
+  };
+
+  // 열기: 검색 필터에서 시군 1곳만 골랐다면 자동 선택 + 즉시 일정 생성
+  const openModal = () => {
+    setOpen(true);
+    if (sigungu === undefined && sigunguCodes.length === 1) {
+      setSigungu(sigunguCodes[0]);
+      load(sigunguCodes[0], theme);
+    }
   };
 
   const applyToPlan = () => {
@@ -98,13 +128,16 @@ export default function MultiDayCourseModal({ profile }: { profile: Profile }) {
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={openModal}
         className="w-full rounded-xl bg-white px-3 py-2 text-sm font-bold text-teal-700 ring-1 ring-teal-600/40 transition-colors hover:bg-teal-50"
       >
         🧳 {days - 1}박 전체 일정 추천
       </button>
 
-      {open && (
+      {/* sticky 패널 안은 스태킹 컨텍스트라 z-50이 갇힌다 — body로 포털 (마운트 후에만) */}
+      {open &&
+        mounted &&
+        createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
             className="absolute inset-0 bg-slate-900/50"
@@ -130,17 +163,26 @@ export default function MultiDayCourseModal({ profile }: { profile: Profile }) {
                 : "출발일 미설정 — 오늘 출발 기준으로 추천해요"}
             </p>
 
-            {/* 테마 */}
+            {/* 상속된 여행 조건 (편집은 검색 필터에서) */}
+            <p className="mt-1 text-xs font-semibold text-slate-500">
+              ⚙️ 여행 조건: {courseConditionParts(profile, transport).join(" · ")}{" "}
+              <span className="font-normal text-slate-400">
+                (검색 필터에서 변경)
+              </span>
+            </p>
+
+            {/* 테마 — 당일 코스 모달과 동일 칩 스타일 */}
             <div className="mt-3 flex flex-wrap gap-1.5">
               {(Object.keys(COURSE_THEME_META) as CourseTheme[]).map((t) => (
                 <button
                   key={t}
                   type="button"
+                  aria-pressed={theme === t}
                   onClick={() => pick(undefined, t)}
-                  className={`rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${
+                  className={`rounded-xl px-3 py-1.5 text-sm font-semibold transition-colors ${
                     theme === t
-                      ? "bg-teal-600 text-white"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      ? "bg-teal-600 text-white shadow-sm"
+                      : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-teal-50 hover:text-teal-700"
                   }`}
                 >
                   {COURSE_THEME_META[t].emoji} {COURSE_THEME_META[t].label}
@@ -149,22 +191,11 @@ export default function MultiDayCourseModal({ profile }: { profile: Profile }) {
             </div>
 
             {/* 지역 */}
-            <div className="mt-2 grid grid-cols-3 gap-1.5 sm:grid-cols-6">
-              {Object.entries(SIGUNGU_SEATS).map(([code, seat]) => (
-                <button
-                  key={code}
-                  type="button"
-                  onClick={() => pick(Number(code))}
-                  className={`rounded-lg px-2 py-1.5 text-xs font-semibold transition-colors ${
-                    sigungu === Number(code)
-                      ? "bg-teal-600 text-white"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                  }`}
-                >
-                  {seat.name}
-                </button>
-              ))}
-            </div>
+            <CourseSigunguPicker
+              selected={sigungu}
+              mine={sigunguCodes}
+              onSelect={(code) => pick(code)}
+            />
 
             {/* 결과 */}
             <div className="mt-4">
@@ -243,7 +274,8 @@ export default function MultiDayCourseModal({ profile }: { profile: Profile }) {
               ) : null}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );

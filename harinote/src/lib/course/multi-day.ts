@@ -69,6 +69,12 @@ export function buildMultiDayCourse(
   sigunguCode: number,
   candidatesByDay: PlaceWithSafety[][],
   lodgingsByDay: PlaceWithSafety[][],
+  /**
+   * 이동수단별 스톱 탐색 반경 배율 (자차 CAR_COURSE_RADIUS_SCALE) —
+   * 점심·오후에만 적용. 숙소·다음날 앵커 반경은 "마지막 스톱 옆에서 자고
+   * 근처에서 이어간다"는 일정 구조라 이동수단과 무관하게 유지.
+   */
+  radiusScale = 1,
 ): MultiDayCourse | null {
   const dayCount = candidatesByDay.length;
   if (dayCount === 0) return null;
@@ -105,7 +111,9 @@ export function buildMultiDayCourse(
       if (c.contentTypeId !== 39) return null;
       if (c.cat3 === CAT3_CAFE) return null;
       const km = haversineKm(anchor.lat, anchor.lng, c.lat, c.lng);
-      return km <= LUNCH_RADIUS_KM ? { score: c.safety.score, km } : null;
+      return km <= LUNCH_RADIUS_KM * radiusScale
+        ? { score: c.safety.score, km }
+        : null;
     })[0];
     if (lunch) used.add(lunch.contentId);
 
@@ -116,7 +124,7 @@ export function buildMultiDayCourse(
     const afternoon = selectTopCandidates(all, used, 1, (c) => {
       if (c.contentTypeId !== 12 && c.contentTypeId !== 14) return null;
       const km = haversineKm(from.lat, from.lng, c.lat, c.lng);
-      if (km > AFTERNOON_RADIUS_KM) return null;
+      if (km > AFTERNOON_RADIUS_KM * radiusScale) return null;
       const indoorOffset = preferIndoor && c.envType === "indoor" ? 1000 : 0;
       return { score: indoorOffset + c.safety.score + attractionBonus(c), km };
     })[0];

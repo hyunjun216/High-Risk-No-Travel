@@ -7,7 +7,10 @@
 import { describe, expect, it } from "vitest";
 import type { PlaceWithSafety } from "@/lib/datasource";
 import type { RiskBreakdown, RiskLevel } from "@/lib/safety/types";
-import { buildThemedCourses } from "@/lib/course/themed";
+import {
+  buildThemedCourses,
+  CAR_COURSE_RADIUS_SCALE,
+} from "@/lib/course/themed";
 import { CAT3_CAFE } from "@/lib/tour/types";
 
 const SIGUNGU = 13; // 춘천시
@@ -299,5 +302,43 @@ describe("관광 매력도 우대 (사진·큐레이션)", () => {
     const lunch = makeRestaurant({ safety: makeSafety(90) });
     const courses = buildThemedCourses(SIGUNGU, [muchSafer, withPhoto, lunch]);
     expect(courses.nature?.stops[0].place.title).toBe("훨씬 안전");
+  });
+});
+
+describe("buildThemedCourses — 자차 반경 배율", () => {
+  it("점심 11.1km: 기본(10km)에선 제외, 자차 배율(15km)에선 포함", () => {
+    const anchor = makePlace({ safety: makeSafety(90) });
+    const lunch11 = makeRestaurant({ lat: 37.9 }); // +0.1도 ≈ 11.1km
+    const afternoon = makePlace({
+      lat: 37.88,
+      sigunguCode: 1,
+      safety: makeSafety(75),
+    });
+    const all = [anchor, lunch11, afternoon];
+
+    const base = buildThemedCourses(SIGUNGU, all);
+    expect(base.nature!.stops.map((s) => s.slot)).not.toContain("lunch");
+
+    const car = buildThemedCourses(SIGUNGU, all, CAR_COURSE_RADIUS_SCALE);
+    expect(car.nature!.stops.map((s) => s.slot)).toContain("lunch");
+  });
+
+  it("오후 16.7km: 기본(15km)에선 제외, 자차 배율(22.5km)에선 포함", () => {
+    const anchor = makePlace({ safety: makeSafety(90) });
+    // 점심 없음 → 오후는 앵커 기준. 기본 반경이면 스톱이 앵커뿐이라 코스 null
+    const afternoon167 = makePlace({
+      lat: 37.95, // +0.15도 ≈ 16.7km
+      sigunguCode: 1,
+      safety: makeSafety(75),
+    });
+    const all = [anchor, afternoon167];
+
+    expect(buildThemedCourses(SIGUNGU, all).nature).toBeNull();
+
+    const car = buildThemedCourses(SIGUNGU, all, CAR_COURSE_RADIUS_SCALE);
+    expect(car.nature!.stops.map((s) => s.slot)).toEqual([
+      "morning",
+      "afternoon",
+    ]);
   });
 });

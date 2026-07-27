@@ -49,10 +49,31 @@ export function placeTypeToQuery(t?: PlaceTypeParam): {
   return { contentTypeId: t };
 }
 
-/** 강원 시군구 코드 파싱 — SIGUNGU_SEATS에 있는 코드(1~18)만 허용 */
-export function parseSigungu(v: SearchParamValue): number | undefined {
-  const n = Number(first(v));
-  return n in SIGUNGU_SEATS ? n : undefined;
+/**
+ * 강원 시군구 코드 목록 파싱 — 콤마 구분 복수값(sigungu=1,5).
+ * SIGUNGU_SEATS에 있는 코드(1~18)만 허용, 중복 제거·오름차순 정렬(URL 정규형).
+ * 단일값(sigungu=3, 홈 대시보드 진입 링크)도 [3]으로 수용. 빈 배열 = 필터 없음.
+ */
+export function parseSigunguList(v: SearchParamValue): number[] {
+  const s = first(v);
+  if (!s) return [];
+  const codes = s.split(",").map(Number).filter((n) => n in SIGUNGU_SEATS);
+  return [...new Set(codes)].sort((a, b) => a - b);
+}
+
+/** 시군 목록 → URL 파라미터 값 — 빈 목록은 생략 */
+export function sigunguParam(codes: number[]): string | undefined {
+  return codes.length > 0 ? codes.join(",") : undefined;
+}
+
+/** 시군 선택 요약 라벨 — "시군 전체" / "강릉시" / "강릉·속초" / "강릉·속초 외 N곳" */
+export function sigunguSummaryLabel(codes: number[]): string {
+  if (codes.length === 0) return "시군 전체";
+  if (codes.length === 1) return SIGUNGU_SEATS[codes[0]].name;
+  const short = (code: number) =>
+    SIGUNGU_SEATS[code].name.replace(/[시군]$/, "");
+  const head = `${short(codes[0])}·${short(codes[1])}`;
+  return codes.length === 2 ? head : `${head} 외 ${codes.length - 2}곳`;
 }
 
 /** 페이지 번호 파싱 — 1 이상의 정수만 허용, 잘못된 값은 1 */
@@ -80,11 +101,6 @@ export function profileParam(profile: Profile): string | undefined {
 
 /** 반려동물 동반 필터 — pet=1일 때만 true */
 export function parsePet(v: SearchParamValue): boolean {
-  return first(v) === "1";
-}
-
-/** 유아 동반 시설 필터 — kids=1일 때만 true */
-export function parseKids(v: SearchParamValue): boolean {
   return first(v) === "1";
 }
 

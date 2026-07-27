@@ -18,27 +18,26 @@ import TravelPlannerPanel from "@/components/TravelPlannerPanel";
 import PlannerDrawer from "@/components/PlannerDrawer";
 import PrefsPersist from "@/components/PrefsPersist";
 import { savedTransport } from "@/lib/prefs";
-import ProfileChips from "@/components/ProfileChips";
 import SearchBox from "@/components/SearchBox";
+import TravelFilterPanel from "@/components/TravelFilterPanel";
 import {
   buildQuery,
   first,
   parseDateRange,
-  parseKids,
   parsePage,
   parsePet,
   parsePlaceType,
   parseProfile,
-  parseSigungu,
+  parseSigunguList,
   parseTransport,
   placeTypeToQuery,
   profileParam,
+  sigunguParam,
+  sigunguSummaryLabel,
   type PlaceTypeParam,
   type SearchParamValue,
 } from "@/components/search-params";
 import { isPetFriendly } from "@/lib/tour/pet-friendly";
-import { isKidsFriendly } from "@/lib/tour/kids-friendly";
-import { SIGUNGU_SEATS } from "@/lib/risk/regions";
 
 const PAGE_SIZE = 24;
 
@@ -65,8 +64,11 @@ export default async function PlacesPage({ searchParams }: Props) {
   const q = first(sp.q)?.trim() ?? "";
   const placeType = parsePlaceType(sp.type);
   const profile = parseProfile(sp.profile);
-  const sigunguCode = parseSigungu(sp.sigungu);
-  const sigunguName = sigunguCode ? SIGUNGU_SEATS[sigunguCode].name : undefined;
+  const sigunguCodes = parseSigunguList(sp.sigungu);
+  const sigunguLabel =
+    sigunguCodes.length > 0 ? sigunguSummaryLabel(sigunguCodes) : undefined;
+  // 여행 조건 패널 열림 유지 플래그 — 패널 내부 링크에만 실린다 (currentParams에 넣지 말 것)
+  const filtersOpen = first(sp.fo) === "1";
 
   // 날짜·기간 모드 (DateChips 또는 홈 날짜 스테퍼에서 전달)
   // 단일: 그날 기준 점수 / 기간: 기간 중 최악일 대표점수로 목록 구성
@@ -74,9 +76,6 @@ export default async function PlacesPage({ searchParams }: Props) {
   // 반려동물 동반 필터 (TourAPI detailPetTour2 수집분)
   const pet = parsePet(sp.pet);
   const petParam = pet ? "1" : undefined;
-  // 유아 동반 시설 필터 (한국문화정보원 2022 데이터 매칭분)
-  const kids = parseKids(sp.kids);
-  const kidsParam = kids ? "1" : undefined;
   // 이동 수단 (상세의 대체지·코스 반경에 반영) — URL 우선, 없으면 쿠키 기억값
   const transport =
     parseTransport(sp.tr) ?? (await savedTransport()) ?? "transit";
@@ -85,12 +84,11 @@ export default async function PlacesPage({ searchParams }: Props) {
   const currentParams = {
     q: q || undefined,
     type: placeType,
-    sigungu: sigunguCode,
+    sigungu: sigunguParam(sigunguCodes),
     profile: profileParam(profile),
     date,
     end,
     pet: petParam,
-    kids: kidsParam,
     tr: transport === "transit" ? undefined : transport,
   };
 
@@ -107,11 +105,14 @@ export default async function PlacesPage({ searchParams }: Props) {
       matchesPlaceQuery(p, {
         q: q || undefined,
         ...placeTypeToQuery(placeType),
-        sigunguCode,
       }),
     )
+    // 시군 복수선택 — PlaceQuery는 단일값 계약이라 pet/kids처럼 후필터
+    .filter(
+      (p) =>
+        sigunguCodes.length === 0 || sigunguCodes.includes(p.sigunguCode),
+    )
     .filter((p) => !pet || isPetFriendly(p.contentId))
-    .filter((p) => !kids || isKidsFriendly(p.contentId))
     .sort((a, b) => b.safety.score - a.safety.score);
 
   // 서버 사이드 페이지네이션 — 24건/페이지.
@@ -125,7 +126,7 @@ export default async function PlacesPage({ searchParams }: Props) {
 
   return (
     // 모바일: flex-col + order로 검색 결과가 인기 TOP10보다 먼저 (블록 레이아웃에선 order가 무시됨)
-    <div className="mx-auto flex max-w-7xl flex-col px-4 py-8 lg:grid lg:grid-cols-[240px_minmax(0,1fr)_320px] lg:items-start lg:gap-6">
+    <div className="mx-auto flex max-w-[84rem] flex-col px-4 py-8 lg:grid lg:grid-cols-[240px_minmax(0,1fr)_380px] lg:items-start lg:gap-6">
       {/* 좌: 인기 관광지 (lg에서 왼쪽 sticky, 모바일은 본문 아래) */}
       <div className="order-2 mt-10 lg:order-1 lg:mt-0 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
         <PopularSidebar profile={profile} />
@@ -139,13 +140,27 @@ export default async function PlacesPage({ searchParams }: Props) {
             profile={profile}
             date={date}
             end={end}
+            sigungu={sigunguParam(sigunguCodes)}
             compact
           />
         </div>
 
       <div className="mt-5 space-y-3">
-        {/* 콘텐츠 종류 탭 (관광지/문화시설/음식점) */}
-        <nav aria-label="관광지 종류 필터" className="flex flex-wrap gap-2">
+        {/* 여행 조건 — 여정 내내 고정되는 필터(지역·동행·이동수단)를 접이식 패널 하나로 */}
+        <TravelFilterPanel
+          sigungu={sigunguCodes}
+          profile={profile}
+          pet={pet}
+          transport={transport}
+          currentParams={currentParams}
+          open={filtersOpen}
+        />
+
+        {/* 콘텐츠 종류 탭 — 코스를 짜며 자주 바꾸는 필터라 여행 조건 아래 배치 */}
+        <nav
+          aria-label="관광지 종류 필터"
+          className="flex flex-wrap gap-2 border-t border-slate-100 pt-3"
+        >
           {TYPE_TABS.map((tab) => {
             const active = tab.value === placeType;
             const href = `/places${buildQuery({ ...currentParams, type: tab.value })}`;
@@ -165,67 +180,6 @@ export default async function PlacesPage({ searchParams }: Props) {
             );
           })}
         </nav>
-
-        {/* 동행 프로필 전환 + 반려동물/유아 필터 + 이동수단 */}
-        <div className="flex flex-wrap items-center gap-2">
-          <ProfileChips
-            basePath="/places"
-            current={profile}
-            extraParams={{ ...currentParams, profile: undefined }}
-          />
-          <Link
-            href={`/places${buildQuery({ ...currentParams, pet: pet ? undefined : "1" })}`}
-            aria-pressed={pet}
-            className={`inline-flex items-center gap-1 rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
-              pet
-                ? "bg-amber-500 text-white shadow-sm"
-                : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-amber-50 hover:text-amber-700"
-            }`}
-          >
-            🐶 반려동물 동반
-          </Link>
-          <Link
-            href={`/places${buildQuery({ ...currentParams, kids: kids ? undefined : "1" })}`}
-            aria-pressed={kids}
-            className={`inline-flex items-center gap-1 rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
-              kids
-                ? "bg-pink-500 text-white shadow-sm"
-                : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-pink-50 hover:text-pink-700"
-            }`}
-          >
-            👶 유아 동반 시설
-          </Link>
-        </div>
-
-        {/* 이동수단 — 쿠키(PrefsPersist)로 기억되어 다음 방문에도 유지 */}
-        <div className="flex flex-wrap items-center gap-2">
-          {(
-            [
-              { key: "transit", label: "🚌 대중교통" },
-              { key: "car", label: "🚗 자차" },
-            ] as const
-          ).map((t) => (
-            <Link
-              key={t.key}
-              href={`/places${buildQuery({
-                // tr을 항상 명시 — 생략하면 쿠키(예: car)가 폴백돼 대중교통 전환이 안 됨
-                ...currentParams,
-                tr: t.key,
-              })}`}
-              aria-pressed={transport === t.key}
-              className={`inline-flex items-center gap-1 rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
-                transport === t.key
-                  ? "bg-slate-700 text-white shadow-sm"
-                  : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100"
-              }`}
-            >
-              {t.label}
-            </Link>
-          ))}
-          <span className="self-center text-xs text-slate-400">
-            자차는 대체지·코스를 더 넓게 (30→50km) 추천해요
-          </span>
-        </div>
       </div>
 
       <PrefsPersist profile={profile} transport={transport} />
@@ -248,15 +202,15 @@ export default async function PlacesPage({ searchParams }: Props) {
               {" · "}
             </strong>
           )}
-          {sigunguName && (
-            <strong className="text-slate-800">{sigunguName} </strong>
+          {sigunguLabel && (
+            <strong className="text-slate-800">{sigunguLabel} </strong>
           )}
           {q ? (
             <>
               <strong className="text-slate-800">&ldquo;{q}&rdquo;</strong>{" "}
               검색 결과{" "}
             </>
-          ) : sigunguName ? (
+          ) : sigunguLabel ? (
             "관광지 "
           ) : (
             "강원 관광지 "
@@ -269,12 +223,12 @@ export default async function PlacesPage({ searchParams }: Props) {
             </>
           )}
         </span>
-        {sigunguName && (
+        {sigunguLabel && (
           <Link
             href={`/places${buildQuery({ ...currentParams, sigungu: undefined })}`}
             className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-200"
           >
-            {sigunguName} 필터 해제 ✕
+            {sigunguLabel} 필터 해제 ✕
           </Link>
         )}
       </p>
@@ -363,11 +317,21 @@ export default async function PlacesPage({ searchParams }: Props) {
 
       {/* 우: 내 여행 계획 (lg에서만 sticky — 모바일은 하단 서랍) */}
       <div className="order-3 hidden lg:sticky lg:top-20 lg:block lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
-        <TravelPlannerPanel courseDate={date} profile={profile} transport={transport} />
+        <TravelPlannerPanel
+          courseDate={date}
+          profile={profile}
+          transport={transport}
+          sigunguCodes={sigunguCodes}
+        />
       </div>
 
       {/* 모바일 계획 서랍 (lg:hidden 내장) */}
-      <PlannerDrawer courseDate={date} profile={profile} transport={transport} />
+      <PlannerDrawer
+        courseDate={date}
+        profile={profile}
+        transport={transport}
+        sigunguCodes={sigunguCodes}
+      />
     </div>
   );
 }

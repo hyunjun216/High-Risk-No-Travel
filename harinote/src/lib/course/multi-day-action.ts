@@ -18,6 +18,7 @@ import { addDaysISO, dayOffsetSeoul, isValidISODate, todayISOSeoul } from "@/lib
 import { getLodgings } from "@/lib/tour/lodging";
 import { buildMultiDayCourse } from "@/lib/course/multi-day";
 import {
+  CAR_COURSE_RADIUS_SCALE,
   COURSE_THEME_META,
   toPlaceDto,
   type CoursePlaceDto,
@@ -56,6 +57,8 @@ export async function recommendMultiDayCourse(input: {
   days: number;
   /** 출발일 (YYYY-MM-DD) — 없으면 오늘 출발 가정 */
   from?: string;
+  /** 이동수단 — 자차면 스톱 탐색 반경 확대 (생략 시 대중교통 기준) */
+  transport?: "transit" | "car";
 }): Promise<MultiDayCourseDto | null> {
   // 서버 액션은 공개 엔드포인트 — 클라이언트 타입을 믿지 않고 검증
   if (
@@ -69,7 +72,10 @@ export async function recommendMultiDayCourse(input: {
     !Object.hasOwn(PROFILE_LABEL, input.profile) ||
     !Number.isInteger(input.days) ||
     input.days < 1 ||
-    input.days > MAX_DAYS
+    input.days > MAX_DAYS ||
+    (input.transport !== undefined &&
+      input.transport !== "transit" &&
+      input.transport !== "car")
   ) {
     throw new Error("잘못된 요청입니다.");
   }
@@ -119,6 +125,7 @@ export async function recommendMultiDayCourse(input: {
     input.sigunguCode,
     candidatesByDay,
     lodgingsByDay,
+    input.transport === "car" ? CAR_COURSE_RADIUS_SCALE : 1,
   );
   if (!course) return null;
 

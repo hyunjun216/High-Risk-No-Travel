@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { PlaceWithSafety } from "@/lib/datasource";
 import type { RiskBreakdown, RiskLevel } from "@/lib/safety/types";
 import { buildMultiDayCourse } from "@/lib/course/multi-day";
+import { CAR_COURSE_RADIUS_SCALE } from "@/lib/course/themed";
 
 const SIGUNGU = 13;
 
@@ -103,5 +104,51 @@ describe("buildMultiDayCourse", () => {
   it("1일차 앵커가 없으면 null", () => {
     const onlyRestaurant = make({ contentTypeId: 39 });
     expect(buildMultiDayCourse("nature", SIGUNGU, [[onlyRestaurant]], [[]])).toBeNull();
+  });
+
+  it("자차 배율: 점심 11.1km가 포함된다 (기본 반경에선 스톱 부족으로 null)", () => {
+    const anchor = make({ title: "앵커", safety: makeSafety(95) });
+    const lunch11 = make({ contentTypeId: 39, title: "점심11", lat: 37.9 }); // +0.1도 ≈ 11.1km
+    const all = [anchor, lunch11];
+
+    expect(buildMultiDayCourse("nature", SIGUNGU, [all], [[]])).toBeNull();
+
+    const car = buildMultiDayCourse(
+      "nature",
+      SIGUNGU,
+      [all],
+      [[]],
+      CAR_COURSE_RADIUS_SCALE,
+    );
+    expect(car!.days[0].stops.map((s) => s.slot)).toEqual(["morning", "lunch"]);
+  });
+
+  it("자차 배율이어도 숙소 반경(15km)은 확대되지 않는다", () => {
+    const anchor = make({ title: "앵커", safety: makeSafety(95) });
+    const lunch = make({ contentTypeId: 39, title: "점심", lat: 37.82 });
+    // 마지막 스톱(오후로 뽑히는 37.85) 기준 +0.15도 ≈ 16.7km — 반경 15km 밖
+    const farLodging = make({
+      contentTypeId: 32,
+      title: "먼 호텔",
+      lat: 38.0,
+      envType: "indoor",
+    });
+    const day2anchor = make({
+      title: "2일차 앵커",
+      lat: 37.85,
+      sigunguCode: 99,
+      safety: makeSafety(90),
+    });
+    const all = [anchor, lunch, day2anchor];
+
+    const car = buildMultiDayCourse(
+      "nature",
+      SIGUNGU,
+      [all, all],
+      [[farLodging], []],
+      CAR_COURSE_RADIUS_SCALE,
+    );
+    expect(car).not.toBeNull();
+    expect(car!.days[0].lodging).toBeUndefined();
   });
 });

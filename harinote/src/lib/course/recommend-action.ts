@@ -11,6 +11,7 @@ import { PROFILE_LABEL, type Profile } from "@/lib/safety/types";
 import { parseDate } from "@/components/search-params";
 import {
   buildThemedCourses,
+  CAR_COURSE_RADIUS_SCALE,
   toThemedCourseDto,
   type CourseTheme,
   type ThemedCourseDto,
@@ -21,6 +22,8 @@ export async function recommendCourses(
   profile: Profile,
   /** 선택 날짜(YYYY-MM-DD) — 홈 날짜 스테퍼 진입 시 목록과 같은 날짜 점수로 코스 생성 */
   dateISO?: string,
+  /** 이동수단 — 자차면 스톱 탐색 반경 확대 (생략 시 대중교통 기준) */
+  transport?: "transit" | "car",
 ): Promise<Record<CourseTheme, ThemedCourseDto | null>> {
   // 서버 액션은 공개 엔드포인트 — 클라이언트 타입을 믿지 않고 검증.
   // `in`은 프로토타입 체인까지 조회해 "constructor" 같은 키가 통과(→ NaN 점수) — hasOwn 사용
@@ -28,7 +31,8 @@ export async function recommendCourses(
     typeof sigunguCode !== "number" ||
     !Object.hasOwn(SIGUNGU_SEATS, sigunguCode) ||
     typeof profile !== "string" ||
-    !Object.hasOwn(PROFILE_LABEL, profile)
+    !Object.hasOwn(PROFILE_LABEL, profile) ||
+    (transport !== undefined && transport !== "transit" && transport !== "car")
   ) {
     throw new Error("잘못된 요청입니다.");
   }
@@ -40,6 +44,7 @@ export async function recommendCourses(
     date
       ? await getPlacesWithSafetyOnDate(profile, date)
       : await getPlacesWithSafety(undefined, profile),
+    transport === "car" ? CAR_COURSE_RADIUS_SCALE : 1,
   );
   return {
     nature: courses.nature && toThemedCourseDto(courses.nature),

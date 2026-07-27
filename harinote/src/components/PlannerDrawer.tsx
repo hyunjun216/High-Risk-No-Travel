@@ -16,9 +16,16 @@ interface Props {
   /** 안전 진단용 현재 조건 (패널로 전달) */
   profile?: Profile;
   transport?: Transport;
+  /** 검색 필터의 시군 복수선택 (패널로 전달) */
+  sigunguCodes?: number[];
 }
 
-export default function PlannerDrawer({ courseDate, profile, transport }: Props) {
+export default function PlannerDrawer({
+  courseDate,
+  profile,
+  transport,
+  sigunguCodes,
+}: Props) {
   const { count, hydrated } = useTravelPlan();
   const [open, setOpen] = useState(false);
 
@@ -51,7 +58,13 @@ export default function PlannerDrawer({ courseDate, profile, transport }: Props)
             >
               닫기 ✕
             </button>
-            <TravelPlannerPanel compact courseDate={courseDate} profile={profile} transport={transport} />
+            <TravelPlannerPanel
+              compact
+              courseDate={courseDate}
+              profile={profile}
+              transport={transport}
+              sigunguCodes={sigunguCodes}
+            />
           </div>
         </div>
       )}

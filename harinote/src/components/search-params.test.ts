@@ -3,33 +3,74 @@ import {
   MAX_RANGE_DAYS,
   parseDateRange,
   parsePlaceType,
-  parseSigungu,
+  parseSigunguList,
   placeTypeToQuery,
+  sigunguParam,
+  sigunguSummaryLabel,
 } from "@/components/search-params";
 import { CAT3_CAFE } from "@/lib/tour/types";
 import { addDaysISO, todayISOSeoul } from "@/lib/date";
 
-describe("parseSigungu", () => {
-  it("SIGUNGU_SEATS에 있는 코드(1~18)는 숫자로 반환", () => {
-    expect(parseSigungu("1")).toBe(1);
-    expect(parseSigungu("13")).toBe(13);
-    expect(parseSigungu("18")).toBe(18);
+describe("parseSigunguList", () => {
+  it("단일값(레거시 sigungu=N)은 한 원소 배열", () => {
+    expect(parseSigunguList("1")).toEqual([1]);
+    expect(parseSigunguList("18")).toEqual([18]);
   });
 
-  it("범위 밖 코드는 undefined", () => {
-    expect(parseSigungu("0")).toBeUndefined();
-    expect(parseSigungu("19")).toBeUndefined();
-    expect(parseSigungu("-1")).toBeUndefined();
+  it("콤마 구분 복수값 파싱", () => {
+    expect(parseSigunguList("1,5")).toEqual([1, 5]);
   });
 
-  it("숫자가 아니거나 비어 있으면 undefined", () => {
-    expect(parseSigungu("abc")).toBeUndefined();
-    expect(parseSigungu("")).toBeUndefined();
-    expect(parseSigungu(undefined)).toBeUndefined();
+  it("오름차순 정렬 + 중복 제거 (URL 정규형)", () => {
+    expect(parseSigunguList("5,1")).toEqual([1, 5]);
+    expect(parseSigunguList("3,3")).toEqual([3]);
+  });
+
+  it("범위 밖·비숫자는 걸러내고 유효값만", () => {
+    expect(parseSigunguList("0,19,5")).toEqual([5]);
+    expect(parseSigunguList("abc,7")).toEqual([7]);
+  });
+
+  it("전부 무효이거나 비어 있으면 빈 배열", () => {
+    expect(parseSigunguList("abc")).toEqual([]);
+    expect(parseSigunguList("")).toEqual([]);
+    expect(parseSigunguList(undefined)).toEqual([]);
   });
 
   it("배열이면 첫 값 기준", () => {
-    expect(parseSigungu(["5", "13"])).toBe(5);
+    expect(parseSigunguList(["5,13", "2"])).toEqual([5, 13]);
+  });
+});
+
+describe("sigunguParam", () => {
+  it("빈 목록은 undefined (URL에서 생략)", () => {
+    expect(sigunguParam([])).toBeUndefined();
+  });
+
+  it("목록은 콤마 문자열", () => {
+    expect(sigunguParam([1])).toBe("1");
+    expect(sigunguParam([1, 5])).toBe("1,5");
+  });
+});
+
+describe("sigunguSummaryLabel", () => {
+  it("0개는 시군 전체", () => {
+    expect(sigunguSummaryLabel([])).toBe("시군 전체");
+  });
+
+  it("1개는 풀네임", () => {
+    expect(sigunguSummaryLabel([1])).toBe("강릉시");
+  });
+
+  it("2개는 시·군 접미사를 뗀 중점 연결", () => {
+    // 1=강릉시, 5=속초시
+    expect(sigunguSummaryLabel([1, 5])).toBe("강릉·속초");
+  });
+
+  it("3개 이상은 앞 2개 + 외 N곳", () => {
+    // 6=양구군
+    expect(sigunguSummaryLabel([1, 5, 6])).toBe("강릉·속초 외 1곳");
+    expect(sigunguSummaryLabel([1, 5, 6, 9])).toBe("강릉·속초 외 2곳");
   });
 });
 

@@ -28,6 +28,18 @@ describe("recommendCourses — 공개 엔드포인트 입력 검증", () => {
     await expect(recommendCourses(13, "default")).resolves.toBeDefined();
   });
 
+  it("transport는 car/transit/undefined만 허용한다", async () => {
+    await expect(
+      recommendCourses(13, "default", undefined, "plane" as never),
+    ).rejects.toThrow("잘못된 요청");
+    await expect(
+      recommendCourses(13, "default", undefined, "car"),
+    ).resolves.toBeDefined();
+    await expect(
+      recommendCourses(13, "default", undefined, "transit"),
+    ).resolves.toBeDefined();
+  });
+
   it("유효한 날짜는 그 날짜 점수로, 무효 날짜는 오늘 점수로 계산한다", async () => {
     vi.mocked(getPlacesWithSafetyOnDate).mockClear();
     vi.mocked(getPlacesWithSafety).mockClear();

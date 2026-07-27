@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * AI 코스 추천 팝업 — 플래너 패널에서 열어 테마·시군·동행 프로필을 고르면
+ * AI 코스 추천 팝업 — 플래너 패널에서 열어 테마·지역을 고르면
  * 서버 액션(recommendCourses)으로 코스를 만들고, 코스를 현재 활성 일차에
- * 통째로 담는다. (sigungu, profile) 조합당 1회만 호출하고 테마 전환은 로컬 필터.
+ * 통째로 담는다. 동행·이동수단은 검색 필터(여행 조건 패널)에서 자동 상속.
+ * (sigungu, profile, transport) 조합당 1회만 호출하고 테마 전환은 로컬 필터.
  */
 import {
   useEffect,
@@ -13,7 +14,8 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import CourseCard from "@/components/CourseCard";
-import { has, toggled } from "@/components/ProfileChips";
+import CourseSigunguPicker from "@/components/CourseSigunguPicker";
+import { courseConditionParts } from "@/components/travel-condition";
 import { recommendCourses } from "@/lib/course/recommend-action";
 import {
   COURSE_THEMES,
@@ -23,24 +25,29 @@ import {
 } from "@/lib/course/themed";
 import { SIGUNGU_SEATS } from "@/lib/risk/regions";
 import type { Profile } from "@/lib/safety/types";
+import type { Transport } from "@/lib/prefs";
 
 type CourseResult = Record<CourseTheme, ThemedCourseDto | null>;
-
-const PROFILE_CHIPS: { who: "kids" | "seniors"; icon: string; label: string }[] = [
-  { who: "kids", icon: "🧒", label: "아이 동반" },
-  { who: "seniors", icon: "👵", label: "부모님 동반" },
-];
 
 interface Props {
   /** 목록의 선택 날짜(?date=) — 있으면 코스도 같은 날짜 점수로 생성 (한 화면 두 점수 방지) */
   date?: string;
+  /** 검색 필터에서 상속되는 여행 조건 — 모달에선 표시만 하고 편집하지 않는다 */
+  profile: Profile;
+  transport: Transport;
+  /** 검색 필터의 시군 복수선택 — 1곳이면 자동 선택, 2곳 이상이면 그룹 우선 표시 */
+  sigunguCodes: number[];
 }
 
-export default function CourseRecommendModal({ date }: Props) {
+export default function CourseRecommendModal({
+  date,
+  profile,
+  transport,
+  sigunguCodes,
+}: Props) {
   const [open, setOpen] = useState(false);
   const [sigungu, setSigungu] = useState<number | undefined>(undefined);
   const [theme, setTheme] = useState<CourseTheme | undefined>();
-  const [profile, setProfile] = useState<Profile>("default");
   const [result, setResult] = useState<{ key: string; data: CourseResult } | null>(null);
   const [failed, setFailed] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -67,14 +74,18 @@ export default function CourseRecommendModal({ date }: Props) {
     };
   }, [open]);
 
-  const load = (nextSigungu: number, nextProfile: Profile) => {
-    const key = `${nextSigungu}:${nextProfile}:${date ?? "today"}`;
+  // 상속 조건(profile/transport)이 페이지에서 바뀌면 키가 달라져 재열기 시 재조회된다
+  const keyOf = (code: number) =>
+    `${code}:${profile}:${transport}:${date ?? "today"}`;
+
+  const load = (nextSigungu: number) => {
+    const key = keyOf(nextSigungu);
     // 서버 액션은 클라이언트당 순차 디스패치라 마지막 요청이 마지막에 반영된다 —
     // 같은 키 재요청도 서버 캐시(10분)를 타므로 스킵 없이 항상 최신으로 수렴시킨다
     setFailed(false);
     startTransition(async () => {
       try {
-        const data = await recommendCourses(nextSigungu, nextProfile, date);
+        const data = await recommendCourses(nextSigungu, profile, date, transport);
         setResult({ key, data });
         // 앞선 요청의 실패가 나중에 정착해도 최신 성공 결과를 가리지 않게 해제
         setFailed(false);
@@ -86,17 +97,21 @@ export default function CourseRecommendModal({ date }: Props) {
 
   const selectSigungu = (code: number) => {
     setSigungu(code);
-    load(code, profile);
+    load(code);
   };
 
-  const toggleProfile = (who: "kids" | "seniors") => {
-    const next = toggled(profile, who);
-    setProfile(next);
-    if (sigungu !== undefined) load(sigungu, next);
+  // 열기: 검색 필터에서 시군 1곳만 골랐다면 자동 선택 + 즉시 생성.
+  // 결과 키가 현재 조건과 같으면(재열기) 재조회 없이 유지.
+  const openModal = () => {
+    setOpen(true);
+    const target = sigungu ?? (sigunguCodes.length === 1 ? sigunguCodes[0] : undefined);
+    if (target === undefined) return;
+    if (sigungu === undefined) setSigungu(target);
+    if (result?.key !== keyOf(target)) load(target);
   };
 
   const ready =
-    sigungu !== undefined && result?.key === `${sigungu}:${profile}:${date ?? "today"}`
+    sigungu !== undefined && result?.key === keyOf(sigungu)
       ? result.data
       : undefined;
   const themesToShow: readonly CourseTheme[] = theme ? [theme] : COURSE_THEMES;
@@ -105,7 +120,7 @@ export default function CourseRecommendModal({ date }: Props) {
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={openModal}
         className="w-full rounded-xl bg-teal-600 px-3 py-2 text-sm font-bold text-white shadow-sm transition-colors hover:bg-teal-700"
       >
         🤖 AI 코스 추천
@@ -143,8 +158,16 @@ export default function CourseRecommendModal({ date }: Props) {
             </div>
 
             <div className="overscroll-contain overflow-y-auto p-4 sm:p-5">
+              {/* ── 상속된 여행 조건 (편집은 검색 필터에서) ── */}
+              <p className="text-xs font-semibold text-slate-500">
+                ⚙️ 여행 조건: {courseConditionParts(profile, transport).join(" · ")}{" "}
+                <span className="font-normal text-slate-400">
+                  (검색 필터에서 변경)
+                </span>
+              </p>
+
               {/* ── 조건 선택 ── */}
-              <section>
+              <section className="mt-4">
                 <h3 className="text-xs font-bold uppercase tracking-wide text-slate-400">
                   여행 테마
                 </h3>
@@ -187,53 +210,11 @@ export default function CourseRecommendModal({ date }: Props) {
                 <h3 className="text-xs font-bold uppercase tracking-wide text-slate-400">
                   지역 선택
                 </h3>
-                <div className="mt-2 grid grid-cols-3 gap-1.5 sm:grid-cols-6">
-                  {Object.entries(SIGUNGU_SEATS).map(([code, s]) => {
-                    const active = sigungu === Number(code);
-                    return (
-                      <button
-                        key={code}
-                        type="button"
-                        aria-pressed={active}
-                        onClick={() => selectSigungu(Number(code))}
-                        className={`rounded-lg px-2 py-1.5 text-center text-xs font-bold transition-colors ${
-                          active
-                            ? "bg-teal-600 text-white shadow-sm"
-                            : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-teal-50 hover:text-teal-700"
-                        }`}
-                      >
-                        {s.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-
-              <section className="mt-4">
-                <h3 className="text-xs font-bold uppercase tracking-wide text-slate-400">
-                  동행 프로필
-                </h3>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {PROFILE_CHIPS.map((c) => {
-                    const active = has(profile, c.who);
-                    return (
-                      <button
-                        key={c.who}
-                        type="button"
-                        aria-pressed={active}
-                        onClick={() => toggleProfile(c.who)}
-                        className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold transition-colors ${
-                          active
-                            ? "bg-teal-600 text-white shadow-sm"
-                            : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-teal-50 hover:text-teal-700"
-                        }`}
-                      >
-                        <span aria-hidden="true">{c.icon}</span>
-                        {c.label}
-                      </button>
-                    );
-                  })}
-                </div>
+                <CourseSigunguPicker
+                  selected={sigungu}
+                  mine={sigunguCodes}
+                  onSelect={selectSigungu}
+                />
               </section>
 
               {/* ── 결과 ── */}
@@ -262,7 +243,7 @@ export default function CourseRecommendModal({ date }: Props) {
                     </p>
                     <button
                       type="button"
-                      onClick={() => load(sigungu, profile)}
+                      onClick={() => load(sigungu)}
                       className="mt-2 rounded-full bg-white px-4 py-1.5 text-xs font-bold text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100"
                     >
                       다시 시도
