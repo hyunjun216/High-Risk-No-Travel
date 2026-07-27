@@ -70,7 +70,7 @@ export default async function PlacesPage({ searchParams }: Props) {
   // 여행 조건 패널 열림 유지 플래그 — 패널 내부 링크에만 실린다 (currentParams에 넣지 말 것)
   const filtersOpen = first(sp.fo) === "1";
 
-  // 날짜·기간 모드 (DateChips 또는 홈 날짜 스테퍼에서 전달)
+  // 날짜·기간 모드 (홈 날짜 스테퍼에서 전달, 기간은 URL 직접 지정)
   // 단일: 그날 기준 점수 / 기간: 기간 중 최악일 대표점수로 목록 구성
   const { start: date, end } = parseDateRange(sp.date, sp.end);
   // 반려동물 동반 필터 (TourAPI detailPetTour2 수집분)
@@ -110,7 +110,8 @@ export default async function PlacesPage({ searchParams }: Props) {
     // 시군 복수선택 — PlaceQuery는 단일값 계약이라 pet/kids처럼 후필터
     .filter(
       (p) =>
-        sigunguCodes.length === 0 || sigunguCodes.includes(p.sigunguCode),
+        sigunguCodes.length === 0 ||
+        (p.sigunguCode !== undefined && sigunguCodes.includes(p.sigunguCode)),
     )
     .filter((p) => !pet || isPetFriendly(p.contentId))
     .sort((a, b) => b.safety.score - a.safety.score);

@@ -77,11 +77,18 @@ export default function CourseCard({ course, profile, onAdded }: Props) {
   // 현재 선택 조합을 내 여행 계획의 활성 일차에 일괄 담기
   const { addMany, activeDay } = useTravelPlan();
   const [added, setAdded] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
   const addCourseToPlan = () => {
-    addMany(
+    // 저장 실패(쿼터·저장소 차단) 시 write()가 false — 성공 표시·모달 닫기를 막는다
+    const ok = addMany(
       chosen.map((p) => ({ contentId: p.contentId, title: p.title, lat: p.lat, lng: p.lng, score: p.score })),
       activeDay,
     );
+    if (!ok) {
+      setSaveFailed(true);
+      setTimeout(() => setSaveFailed(false), 2000);
+      return;
+    }
     setAdded(true);
     setTimeout(() => setAdded(false), 2000);
     onAdded?.();
@@ -110,10 +117,12 @@ export default function CourseCard({ course, profile, onAdded }: Props) {
             className={`rounded-full px-3 py-1 text-xs font-bold transition-colors ${
               added
                 ? "bg-teal-600 text-white"
-                : "bg-teal-50 text-teal-700 ring-1 ring-teal-200 hover:bg-teal-100"
+                : saveFailed
+                  ? "bg-red-50 text-red-700 ring-1 ring-red-200"
+                  : "bg-teal-50 text-teal-700 ring-1 ring-teal-200 hover:bg-teal-100"
             }`}
           >
-            {added ? "✓ 담았어요" : "+ 내 계획에 담기"}
+            {added ? "✓ 담았어요" : saveFailed ? "저장 못 했어요" : "+ 내 계획에 담기"}
           </button>
         </div>
       </div>
