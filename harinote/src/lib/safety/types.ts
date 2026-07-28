@@ -1,27 +1,26 @@
 /**
  * [계약 파일] 안전 점수 모델 타입 정의
- * SafetyScore = 100 - (Weather + Disaster + Medical + Mobility)
+ * SafetyScore = 100 - (Weather + Disaster + Medical)
  * 변경 시 데이터/점수엔진/UI 전 영역에 영향 — 수정은 메인 세션 승인 후에만.
  */
 
 /**
- * 동행/이동 프로필 — 위험 가중치 차등 적용.
+ * 동행 프로필 — 위험 가중치 차등 적용.
  * 아이·부모님은 동시 선택 가능 (with_kids_seniors) — 폭염 임계 하향은 둘 다,
  * 미세먼지 민감군은 아이, 응급의료 가중은 부모님이 각각 적용된다.
+ * (이동수단(자차/대중교통)은 점수 축이 아니라 추천 반경에만 영향 — travel-condition.ts)
  */
 export type Profile =
   | "default"
   | "with_kids"
   | "with_seniors"
-  | "with_kids_seniors"
-  | "own_car";
+  | "with_kids_seniors";
 
 export const PROFILE_LABEL: Record<Profile, string> = {
   default: "기본",
   with_kids: "아이 동반",
   with_seniors: "부모님 동반",
   with_kids_seniors: "아이·부모님 동반",
-  own_car: "자차 이동",
 };
 
 /** 관광지 1곳의 위험 계산 입력값 — 공공데이터에서 채워짐 (1주차: fixture) */
@@ -52,8 +51,6 @@ export interface RiskInput {
   emergencyRoomKm: number;
   /** 최근접 대피소까지 거리 km (행정안전부, 선택) */
   shelterKm?: number;
-  /** 이동 경로 위험 0~1 (도로교통공단, 2주차 이후) */
-  roadRisk?: number;
 }
 
 export type RiskFactorKey =
@@ -67,8 +64,7 @@ export type RiskFactorKey =
   | "forest_fire" // 산불
   | "landslide" // 산사태 (강우×지형 프록시 + 산림청 예보발령 override)
   | "medical" // 응급의료 접근성
-  | "shelter" // 대피소 접근성
-  | "road"; // 이동 위험
+  | "shelter"; // 대피소 접근성
 
 export type RiskLevel = "low" | "moderate" | "high";
 
@@ -111,7 +107,6 @@ export interface RiskBreakdown {
   weatherRisk: number;
   disasterRisk: number;
   medicalRisk: number;
-  mobilityRisk: number;
 }
 
 /** 카테고리 소계 표시용 공용 정의 — 상세·리포트 화면이 같은 키·라벨·아이콘을 공유한다 */
@@ -119,7 +114,6 @@ export const RISK_CATEGORY_LABELS = [
   { key: "weatherRisk", icon: "🌤️", label: "기상" },
   { key: "disasterRisk", icon: "⚠️", label: "재난" },
   { key: "medicalRisk", icon: "🏥", label: "의료" },
-  { key: "mobilityRisk", icon: "🚗", label: "이동" },
 ] as const;
 
 export const GRADE_LABEL: Record<RiskLevel, string> = {

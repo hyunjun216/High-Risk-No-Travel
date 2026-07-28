@@ -39,7 +39,6 @@ function breakdown(score: number, grade: RiskBreakdown["grade"]): RiskBreakdown 
     weatherRisk: 0,
     disasterRisk: 0,
     medicalRisk: 0,
-    mobilityRisk: 0,
   };
 }
 

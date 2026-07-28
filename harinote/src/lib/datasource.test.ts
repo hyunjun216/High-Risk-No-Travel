@@ -65,7 +65,6 @@ function fakeDay(dateISO: string, score: number): DateSafety {
     weatherRisk: 0,
     disasterRisk: 0,
     medicalRisk: 0,
-    mobilityRisk: 0,
   };
   return { mode: "seasonal", dateISO, dayOffset: 10, breakdown };
 }

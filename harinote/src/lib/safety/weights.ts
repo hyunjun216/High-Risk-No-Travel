@@ -263,18 +263,6 @@ export function shelterPoints(km: number): number {
 }
 
 // ─────────────────────────────────────────────
-// 이동 위험 (상한 10, 2주차 — roadRisk 입력 없으면 0점)
-// ─────────────────────────────────────────────
-export const ROAD = {
-  MAX_POINTS: 10,
-} as const;
-
-/** 도로교통공단 경로 위험 지수 0~1 → 기본 감점 */
-export function roadPoints(roadRisk: number): number {
-  return Math.min(1, Math.max(0, roadRisk)) * ROAD.MAX_POINTS;
-}
-
-// ─────────────────────────────────────────────
 // 환경 유형 가중 — TourAPI 카테고리 기반 자체 분류(PlaceEnvType)를 점수에 반영
 // ─────────────────────────────────────────────
 export interface EnvWeight {
@@ -313,7 +301,6 @@ export interface ProfileWeight {
   heat: number;
   pm: number;
   medical: number;
-  road: number;
   /** 폭염 임계값 하향 ℃ (민감층 2℃ — 영향예보 취약계층 관심단계 31℃ 근거) */
   heatShiftC: number;
   /** 미세먼지 민감군 곡선 사용 여부 (AQI USG 구조) */
@@ -321,15 +308,13 @@ export interface ProfileWeight {
 }
 
 export const PROFILE_WEIGHT: Record<Profile, ProfileWeight> = {
-  default: { heat: 1.0, pm: 1.0, medical: 1.0, road: 1.0, heatShiftC: 0, pmSensitive: false },
+  default: { heat: 1.0, pm: 1.0, medical: 1.0, heatShiftC: 0, pmSensitive: false },
   /** 아이 동반: 폭염 임계값 2℃ 하향 + 미세먼지 민감군 곡선 */
-  with_kids: { heat: 1.0, pm: 1.0, medical: 1.0, road: 1.0, heatShiftC: 2, pmSensitive: true },
+  with_kids: { heat: 1.0, pm: 1.0, medical: 1.0, heatShiftC: 2, pmSensitive: true },
   /** 부모님 동반: 응급의료 ×1.5 + 폭염 임계값 2℃ 하향 (노약자도 폭염 취약계층) */
-  with_seniors: { heat: 1.0, pm: 1.0, medical: 1.5, road: 1.0, heatShiftC: 2, pmSensitive: false },
+  with_seniors: { heat: 1.0, pm: 1.0, medical: 1.5, heatShiftC: 2, pmSensitive: false },
   /** 아이·부모님 동시: 폭염 하향 + 미세먼지 민감(아이) + 응급의료 ×1.5(부모님) */
-  with_kids_seniors: { heat: 1.0, pm: 1.0, medical: 1.5, road: 1.0, heatShiftC: 2, pmSensitive: true },
-  /** 자차 이동: 도로 위험 민감 */
-  own_car: { heat: 1.0, pm: 1.0, medical: 1.0, road: 1.5, heatShiftC: 0, pmSensitive: false },
+  with_kids_seniors: { heat: 1.0, pm: 1.0, medical: 1.5, heatShiftC: 2, pmSensitive: true },
 };
 
 // ─────────────────────────────────────────────

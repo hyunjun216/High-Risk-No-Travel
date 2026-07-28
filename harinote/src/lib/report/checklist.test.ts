@@ -218,7 +218,7 @@ describe("buildChecklist — 중복 없음", () => {
       forestFireLevel: 4,
       emergencyRoomKm: 35,
     });
-    for (const profile of ["default", "with_kids", "with_seniors", "own_car"] as const) {
+    for (const profile of ["default", "with_kids", "with_seniors", "with_kids_seniors"] as const) {
       const items = buildChecklist(extreme, envPlace("outdoor_water"), profile);
       expect(new Set(items).size).toBe(items.length);
     }

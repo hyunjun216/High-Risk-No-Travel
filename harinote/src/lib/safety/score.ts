@@ -1,7 +1,7 @@
 /**
  * 안전 점수 엔진 — 쾌적층(관광기후지수 TCI) − 안전층(재난·의료 취약성).
  *
- * SafetyScore = TCI(쾌적) − 안전 감점(산불·산사태·응급의료) − 이동
+ * SafetyScore = TCI(쾌적) − 안전 감점(산불·산사태·응급의료)
  * - 쾌적층: 관광기후지수(K-TCI/KTCI) — 체감온도·강수·미세먼지·바람. envType(실내 할인·
  *   계곡 강수 가중)·프로필(민감층)로 변조. 근거=tci.ts, analysis/23.
  * - 안전층: 산불·산사태(산림청 단계) + 응급의료 접근성(취약성). FEMA/지역안전지수 구조.
@@ -22,7 +22,6 @@ import {
   LANDSLIDE,
   MEDICAL,
   PROFILE_WEIGHT,
-  ROAD,
   SHELTER,
   forestFirePoints,
   gradeForScore,
@@ -32,7 +31,6 @@ import {
   levelForPoints,
   medicalPoints,
   pmGradeLabel,
-  roadPoints,
   shelterPoints,
 } from "@/lib/safety/weights";
 import { computeTciBreakdown } from "@/lib/safety/tci";
@@ -270,30 +268,12 @@ export function computeSafetyScore(
     });
   }
 
-  // ── 이동 위험 (선택 입력) ──
-  let road = 0;
-  if (input.roadRisk !== undefined) {
-    road = Math.round(Math.min(ROAD.MAX_POINTS, roadPoints(input.roadRisk) * prof.road));
-    factors.push({
-      key: "road",
-      label: "이동 위험",
-      value: input.roadRisk,
-      unit: "지수",
-      threshold: 0.5,
-      points: road,
-      maxPoints: ROAD.MAX_POINTS,
-      level: levelForPoints(road, ROAD.MAX_POINTS),
-      description: `경로 위험 지수 ${input.roadRisk} (도로교통공단, 0~1)`,
-    });
-  }
-
-  // ── 합산: score = 100 − (쾌적 + 안전 + 이동) ──
+  // ── 합산: score = 100 − (쾌적 + 안전) ──
   // 재난 단계 감점이 등급컷에 앵커돼 있어(높음 45→≤55 주의, 매우높음/경보 80→≤20 방문자제)
   // 별도 override 없이 감점 합만으로 등급이 보장된다. 점수 = 100−감점 합(항상 일치).
   const disasterRisk = heavyRainPts + fire + landslide + shelter;
   const medicalRisk = medical;
-  const mobilityRisk = road;
-  const total = weatherRisk + disasterRisk + medicalRisk + mobilityRisk;
+  const total = weatherRisk + disasterRisk + medicalRisk;
   const score = Math.max(0, Math.min(100, 100 - total));
 
   return {
@@ -304,6 +284,5 @@ export function computeSafetyScore(
     weatherRisk,
     disasterRisk,
     medicalRisk,
-    mobilityRisk,
   };
 }

@@ -196,18 +196,10 @@ describe("재난 경보급 — 감점 앵커로 총점 보장(별도 override �
   });
 });
 
-describe("shelter / road — 선택 입력", () => {
+describe("shelter — 선택 입력", () => {
   it("미제공 시 요인 없음", () => {
     const b = run({});
     expect(b.factors.some((f) => f.key === "shelter")).toBe(false);
-    expect(b.factors.some((f) => f.key === "road")).toBe(false);
-    expect(b.mobilityRisk).toBe(0);
-  });
-
-  it("roadRisk 0.8 + own_car는 default보다 큰 이동 감점", () => {
-    const base = factor(run({ roadRisk: 0.8 }), "road").points;
-    const car = factor(run({ roadRisk: 0.8 }, "outdoor_general", "own_car"), "road").points;
-    expect(car).toBeGreaterThan(base);
   });
 });
 
@@ -225,9 +217,7 @@ describe("점수 일관성 / 등급", () => {
       const b = run(input, env, profile);
       const total = b.factors.reduce((s, f) => s + f.points, 0);
       expect(b.score).toBe(Math.max(0, Math.min(100, 100 - total)));
-      expect(
-        b.weatherRisk + b.disasterRisk + b.medicalRisk + b.mobilityRisk,
-      ).toBe(total);
+      expect(b.weatherRisk + b.disasterRisk + b.medicalRisk).toBe(total);
       expect(b.score).toBeGreaterThanOrEqual(0);
       expect(b.score).toBeLessThanOrEqual(100);
     }
@@ -235,7 +225,7 @@ describe("점수 일관성 / 등급", () => {
 
   it("카테고리 소계 = 해당 요인 points 합", () => {
     const b = run(
-      { tempC: 33, rainMm: 10, rainProbPct: 70, pm25: 50, forestFireLevel: 3, shelterKm: 4, roadRisk: 0.5 },
+      { tempC: 33, rainMm: 10, rainProbPct: 70, pm25: 50, forestFireLevel: 3, shelterKm: 4 },
       "outdoor_mountain",
     );
     const sum = (keys: RiskFactorKey[]) =>
@@ -243,7 +233,6 @@ describe("점수 일관성 / 등급", () => {
     expect(b.weatherRisk).toBe(sum(["heat", "rain", "wind", "pm", "sun"]));
     expect(b.disasterRisk).toBe(sum(["heavy_rain", "forest_fire", "landslide", "shelter"]));
     expect(b.medicalRisk).toBe(sum(["medical"]));
-    expect(b.mobilityRisk).toBe(sum(["road"]));
   });
 
   it("gradeForScore 경계: 70→low, 69→moderate, 40→moderate, 39→high", () => {

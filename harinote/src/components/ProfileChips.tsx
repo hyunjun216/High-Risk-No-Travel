@@ -29,7 +29,7 @@ export function toggled(current: Profile, who: "kids" | "seniors"): Profile {
 
 /**
  * 동행 프로필 칩 — 아이·부모님을 각각 독립 토글 (동시 선택 가능).
- * 이동수단(own_car)은 별도 축이라 여기 없음.
+ * 이동수단(자차/대중교통)은 점수 축이 아니라 추천 반경 조건이라 여기 없음.
  */
 export default function ProfileChips({ basePath, current, extraParams = {} }: Props) {
   const chips: { who: "kids" | "seniors"; icon: string; label: string }[] = [

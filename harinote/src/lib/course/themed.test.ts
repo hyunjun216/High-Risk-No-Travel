@@ -30,7 +30,6 @@ function makeSafety(score: number, weatherRisk = 0): RiskBreakdown {
     weatherRisk,
     disasterRisk: 0,
     medicalRisk: 0,
-    mobilityRisk: 0,
   };
 }
 
