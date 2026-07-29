@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 import {
   getPlacesWithSafety,
   getPlacesWithSafetyOnDate,
   getPlacesWithSafetyOnRange,
   matchesPlaceQuery,
 } from "@/lib/datasource";
+import type { Profile } from "@/lib/safety/types";
 import { dayOffsetSeoul, formatKoreanDate } from "@/lib/date";
 import {
   CAT3_CAFE_LABEL,
@@ -79,6 +81,7 @@ export default async function PlacesPage({ searchParams }: Props) {
   // 이동 수단 (상세의 대체지·코스 반경에 반영) — URL 우선, 없으면 쿠키 기억값
   const transport =
     parseTransport(sp.tr) ?? (await savedTransport()) ?? "transit";
+  const page = parsePage(sp.page);
 
   // 링크들이 공유하는 현재 조건 — 각 링크는 바꿀 파라미터만 덮어쓴다
   const currentParams = {
@@ -92,38 +95,19 @@ export default async function PlacesPage({ searchParams }: Props) {
     tr: transport === "transit" ? undefined : transport,
   };
 
-  // 기본 정렬 = 안전점수 높은 순 — "어디가 안전한가"가 서비스의 축이므로
-  // 데이터 순서(사실상 가나다)가 아니라 점수가 목록의 기준이어야 한다.
-  // 전량 점수는 10분 메모리 캐시(오늘/날짜별)를 재사용해 부담 없음.
-  const all = date
-    ? end
-      ? await getPlacesWithSafetyOnRange(profile, date, end)
-      : await getPlacesWithSafetyOnDate(profile, date)
-    : await getPlacesWithSafety(undefined, profile);
-  const places = all
-    .filter((p) =>
-      matchesPlaceQuery(p, {
-        q: q || undefined,
-        ...placeTypeToQuery(placeType),
-      }),
-    )
-    // 시군 복수선택 — PlaceQuery는 단일값 계약이라 pet/kids처럼 후필터
-    .filter(
-      (p) =>
-        sigunguCodes.length === 0 ||
-        (p.sigunguCode !== undefined && sigunguCodes.includes(p.sigunguCode)),
-    )
-    .filter((p) => !pet || isPetFriendly(p.contentId))
-    .sort((a, b) => b.safety.score - a.safety.score);
-
-  // 서버 사이드 페이지네이션 — 24건/페이지.
-  const totalPages = Math.max(1, Math.ceil(places.length / PAGE_SIZE));
-  const page = Math.min(parsePage(sp.page), totalPages);
-  const start = (page - 1) * PAGE_SIZE;
-  const pagePlaces = places.slice(start, start + PAGE_SIZE);
-
-  const pageHref = (p: number) =>
-    `/places${buildQuery({ ...currentParams, page: p === 1 ? undefined : p })}`;
+  // 결과 영역만 Suspense로 격리 — 같은 세그먼트 내 searchParams 전환은 loading.tsx가
+  // 뜨지 않으므로, 결과에 영향 주는 파라미터를 key로 걸어 전환마다 폴백 표시를 보장한다.
+  // 셸(검색창·필터·패널)은 전량 점수 조회를 기다리지 않고 즉시 그려진다.
+  const resultsKey = [
+    q,
+    placeType ?? "",
+    profile,
+    sigunguCodes.join("."),
+    date ?? "",
+    end ?? "",
+    petParam ?? "",
+    page,
+  ].join("|");
 
   return (
     // 모바일: flex-col + order로 검색 결과가 인기 TOP10보다 먼저 (블록 레이아웃에선 order가 무시됨)
@@ -185,6 +169,102 @@ export default async function PlacesPage({ searchParams }: Props) {
 
       <PrefsPersist profile={profile} transport={transport} />
 
+      <Suspense key={resultsKey} fallback={<ResultsSkeleton />}>
+        <PlacesResults
+          q={q}
+          placeType={placeType}
+          profile={profile}
+          sigunguCodes={sigunguCodes}
+          sigunguLabel={sigunguLabel}
+          date={date}
+          end={end}
+          pet={pet}
+          page={page}
+          currentParams={currentParams}
+        />
+      </Suspense>
+      </div>
+
+      {/* 우: 내 여행 계획 (lg에서만 sticky — 모바일은 하단 서랍) */}
+      <div className="order-3 hidden lg:sticky lg:top-20 lg:block lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
+        <TravelPlannerPanel
+          courseDate={date}
+          profile={profile}
+          transport={transport}
+          sigunguCodes={sigunguCodes}
+        />
+      </div>
+
+      {/* 모바일 계획 서랍 (lg:hidden 내장) */}
+      <PlannerDrawer
+        courseDate={date}
+        profile={profile}
+        transport={transport}
+        sigunguCodes={sigunguCodes}
+      />
+    </div>
+  );
+}
+
+/** 결과 목록 — 전량 안전점수 조회를 이 서브트리에 격리해 셸이 먼저 스트리밍되게 한다 */
+async function PlacesResults({
+  q,
+  placeType,
+  profile,
+  sigunguCodes,
+  sigunguLabel,
+  date,
+  end,
+  pet,
+  page: pageParam,
+  currentParams,
+}: {
+  q: string;
+  placeType: PlaceTypeParam | undefined;
+  profile: Profile;
+  sigunguCodes: number[];
+  sigunguLabel: string | undefined;
+  date: string | undefined;
+  end: string | undefined;
+  pet: boolean;
+  page: number;
+  currentParams: Record<string, string | number | undefined>;
+}) {
+  // 기본 정렬 = 안전점수 높은 순 — "어디가 안전한가"가 서비스의 축이므로
+  // 데이터 순서(사실상 가나다)가 아니라 점수가 목록의 기준이어야 한다.
+  // 전량 점수는 10분 메모리 캐시(오늘/날짜별)를 재사용해 부담 없음.
+  const all = date
+    ? end
+      ? await getPlacesWithSafetyOnRange(profile, date, end)
+      : await getPlacesWithSafetyOnDate(profile, date)
+    : await getPlacesWithSafety(undefined, profile);
+  const places = all
+    .filter((p) =>
+      matchesPlaceQuery(p, {
+        q: q || undefined,
+        ...placeTypeToQuery(placeType),
+      }),
+    )
+    // 시군 복수선택 — PlaceQuery는 단일값 계약이라 pet/kids처럼 후필터
+    .filter(
+      (p) =>
+        sigunguCodes.length === 0 ||
+        (p.sigunguCode !== undefined && sigunguCodes.includes(p.sigunguCode)),
+    )
+    .filter((p) => !pet || isPetFriendly(p.contentId))
+    .sort((a, b) => b.safety.score - a.safety.score);
+
+  // 서버 사이드 페이지네이션 — 24건/페이지.
+  const totalPages = Math.max(1, Math.ceil(places.length / PAGE_SIZE));
+  const page = Math.min(pageParam, totalPages);
+  const start = (page - 1) * PAGE_SIZE;
+  const pagePlaces = places.slice(start, start + PAGE_SIZE);
+
+  const pageHref = (p: number) =>
+    `/places${buildQuery({ ...currentParams, page: p === 1 ? undefined : p })}`;
+
+  return (
+    <>
       <p className="mt-6 flex flex-wrap items-center gap-2 text-sm text-slate-500">
         <span>
           {date && (
@@ -314,25 +394,23 @@ export default async function PlacesPage({ searchParams }: Props) {
           )}
         </>
       )}
-      </div>
+    </>
+  );
+}
 
-      {/* 우: 내 여행 계획 (lg에서만 sticky — 모바일은 하단 서랍) */}
-      <div className="order-3 hidden lg:sticky lg:top-20 lg:block lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
-        <TravelPlannerPanel
-          courseDate={date}
-          profile={profile}
-          transport={transport}
-          sigunguCodes={sigunguCodes}
-        />
+/** 결과 대기 중 폴백 — 카드 그리드 자리를 잡아 레이아웃 점프 없이 로딩을 보여준다 */
+function ResultsSkeleton() {
+  return (
+    <div aria-hidden="true" className="animate-pulse">
+      <div className="mt-6 h-4 w-56 rounded bg-slate-100" />
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        {Array.from({ length: 8 }, (_, i) => (
+          <div
+            key={i}
+            className="h-44 rounded-2xl bg-white ring-1 ring-slate-100"
+          />
+        ))}
       </div>
-
-      {/* 모바일 계획 서랍 (lg:hidden 내장) */}
-      <PlannerDrawer
-        courseDate={date}
-        profile={profile}
-        transport={transport}
-        sigunguCodes={sigunguCodes}
-      />
     </div>
   );
 }
