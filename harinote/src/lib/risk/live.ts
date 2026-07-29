@@ -3,10 +3,9 @@
  *
  * 점진적 실데이터화: mockRiskInputFor를 베이스로
  * tempC·rainProbPct·rainMm·windMs·pm25·forestFireLevel은 실데이터로 덮어쓰고,
- * emergencyRoomKm는 내장 응급의료기관 좌표(src/data/hospitals.gangwon.json)로 실계산한다.
- * shelterKm·roadRisk는 아직 mock — 후속 작업.
- * (산불위험은 데이터포털 활용신청 승인 전이면 Forbidden으로 실패해 mock이 유지되고,
- * 키가 활성화되는 즉시 별도 코드 변경 없이 실데이터로 전환된다.)
+ * emergencyRoomKm·shelterKm는 내장 좌표(hospitals/shelters.gangwon.json)로 실계산한다.
+ * (산불위험은 활용신청 승인 완료로 실데이터 — 2026-07-28 스모크 확인.
+ * 키가 만료·차단돼 Forbidden이 되면 해당 필드만 mock으로 자동 폴백된다.)
  *
  * 안정성 계약: 개별 소스 실패 시 해당 필드만 mock 유지(부분 성공 허용),
  * 전체 실패 시에도 throw하지 않고 mock 전체를 반환한다 (화면이 죽으면 안 됨).
@@ -20,6 +19,7 @@ import { fetchKmaDailyWeather } from "./kma";
 import { getGangwonPm25 } from "./airkorea";
 import { fetchForestFireLevel } from "./forest";
 import { nearestHospitalKm } from "./medical";
+import { nearestShelterKm } from "./shelter";
 import { SIGUNGU_SEATS } from "./regions";
 
 /** 실연동에 필요한 두 키가 모두 있는가 — 없으면 호출부는 mock 경로를 쓴다 */
@@ -57,6 +57,13 @@ export async function getLiveRiskInput(
   const erKm = nearestHospitalKm(place.lat, place.lng, place.contentId);
   if (Number.isFinite(erKm)) {
     input.emergencyRoomKm = Math.round(erKm * 10) / 10;
+  }
+
+  // 대피소 거리 — 내장 민방위 대피시설 좌표 기반 실계산 (동일 원칙).
+  // 데이터가 비어 있으면(Infinity) 필드 미설정 → 점수엔진이 축을 비활성 유지.
+  const shKm = nearestShelterKm(place.lat, place.lng, place.contentId);
+  if (Number.isFinite(shKm)) {
+    input.shelterKm = Math.round(shKm * 10) / 10;
   }
 
   // 격자 선택: 기본은 시군 대표점, 산악형은 자기 좌표 (gridPointFor 참고)

@@ -101,9 +101,9 @@ export function mockRiskInputFor(
 
   // 한계: 습도(REH)를 생성하지 않아 체감온도(apparentTempC) 미설정 — 폭염은 건구 최고기온으로 평가
 
-  // 대피소(shelterKm)는 생성하지 않는다 — 행안부 실데이터 미확보 상태에서
-  // mock 거리를 표시하면 사용자를 오해시킴 (2026-07-13 축 비활성 결정).
-  // 엔진의 처리 능력(shelterKm 입력 시 감점)은 유지 — 데이터 확보 시 여기만 복원.
+  // 대피소(shelterKm)는 mock으로 생성하지 않는다 — live 경로(risk/live.ts)가
+  // 내장 대피시설 좌표(src/data/shelters.gangwon.json)로 항상 실계산해 덮어쓴다
+  // (응급의료 거리와 달리 mock 베이스라인조차 불필요 — 네트워크·키 무관 실값).
 
   return input;
 }

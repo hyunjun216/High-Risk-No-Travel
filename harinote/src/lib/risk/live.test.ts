@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apparentTempSummerC } from "@/lib/risk/apparent-temp";
 import { getLiveRiskInput, gridPointFor, hasLiveRiskKeys } from "@/lib/risk/live";
 import { nearestHospitalKm } from "@/lib/risk/medical";
+import { nearestShelterKm } from "@/lib/risk/shelter";
 import { mockRiskInputFor } from "@/fixtures/safety/risk-inputs";
 import { latLngToGrid } from "@/lib/risk/kma-grid";
 import { SIGUNGU_SEATS } from "@/lib/risk/regions";
@@ -91,10 +92,11 @@ describe("getLiveRiskInput — 전체 실패 폴백", () => {
   it("두 소스가 모두 실패하면 throw 없이 mock을 반환하고, 경고는 1회만 남긴다", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    // emergencyRoomKm만은 네트워크 없이 내장 병원 좌표로 실계산된다
+    // 응급의료·대피소 거리만은 네트워크 없이 내장 좌표로 실계산된다
     const expected = (p: typeof place) => ({
       ...mockRiskInputFor(p),
       emergencyRoomKm: Math.round(nearestHospitalKm(p.lat, p.lng) * 10) / 10,
+      shelterKm: Math.round(nearestShelterKm(p.lat, p.lng) * 10) / 10,
     });
 
     const first = await getLiveRiskInput(place);
