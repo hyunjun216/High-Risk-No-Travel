@@ -32,7 +32,7 @@ describe("createTtlCache — 기본 동작", () => {
     expect(factory).toHaveBeenCalledTimes(1);
   });
 
-  it("실패 프로미스는 failTtl 내 재사용, 이후 블로킹 재시도한다", async () => {
+  it("실패 프로미스는 failTtl 내 재사용, 이후에도 블로킹 없이 백그라운드 재시도한다", async () => {
     const cache = createTtlCache<number>(1000, 100);
     let calls = 0;
     const factory = vi.fn(async () => {
@@ -44,8 +44,12 @@ describe("createTtlCache — 기본 동작", () => {
     // failTtl(100ms) 내 — 거부된 프로미스 재사용 (재시도 폭주 방지)
     await expect(cache.get("k", factory)).rejects.toThrow("down");
     expect(factory).toHaveBeenCalledTimes(1);
-    // failTtl 경과 — 성공값이 없으므로 스테일 없이 블로킹 재시도
+    // failTtl 경과 — 거부 프로미스를 즉시 반환(동기 대기 없음) + 백그라운드 재시도
     vi.advanceTimersByTime(150);
+    await expect(cache.get("k", factory)).rejects.toThrow("down");
+    expect(factory).toHaveBeenCalledTimes(2); // 백그라운드 재시도 시작됨
+    await flush();
+    // 재시도 성공 → 다음 get부터 새 값
     await expect(cache.get("k", factory)).resolves.toBe(2);
     expect(factory).toHaveBeenCalledTimes(2);
   });
