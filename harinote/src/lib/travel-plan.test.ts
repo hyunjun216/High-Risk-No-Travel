@@ -3,14 +3,21 @@ import {
   addItem,
   addItems,
   dateOfDay,
+  defaultSlotFor,
   EMPTY_PLAN,
   isValidPlan,
   itemsByDay,
+  itemsBySlot,
+  MEMO_MAX_LEN,
+  migratePlan,
   removeItem,
   reorder,
   reorderDay,
   setItemDay,
+  setItemMemo,
+  setItemSlot,
   setTrip,
+  slotOrderedItems,
   suggestDayOrder,
   swapItem,
   totalDays,
@@ -229,5 +236,168 @@ describe("suggestDayOrder / reorderDay", () => {
     const plan: TravelPlan = { items: [{ ...A2, day: 1 }, { ...B2, day: 1 }] };
     expect(reorderDay(plan, 1, [{ ...A2, day: 1 }])).toBe(plan);
     expect(reorderDay(plan, 9, [])).toBe(plan);
+  });
+});
+
+describe("migratePlan (레거시 slot 배정)", () => {
+  it("slot 없는 항목을 일차 내 순서로 오전→점심→오후→저녁 배정", () => {
+    const plan: TravelPlan = {
+      items: [A, B, C, { contentId: 4, title: "D", lat: 37.3, lng: 128.5 }],
+    };
+    const m = migratePlan(plan);
+    expect(m.items.map((i) => i.slot)).toEqual([
+      "morning",
+      "lunch",
+      "afternoon",
+      "evening",
+    ]);
+  });
+
+  it("4번째 이후 항목도 저녁으로 배정", () => {
+    const items = [1, 2, 3, 4, 5].map((n) => ({
+      contentId: n,
+      title: `P${n}`,
+      lat: 37,
+      lng: 128,
+    }));
+    const m = migratePlan({ items });
+    expect(m.items[4].slot).toBe("evening");
+  });
+
+  it("일차별로 독립 배정 (2일차 첫 항목도 오전)", () => {
+    const plan: TravelPlan = {
+      items: [{ ...A, day: 1 }, { ...B, day: 2 }],
+      nights: 1,
+    };
+    const m = migratePlan(plan);
+    expect(m.items[0].slot).toBe("morning");
+    expect(m.items[1].slot).toBe("morning");
+  });
+
+  it("slot이 있는 항목은 건드리지 않고, 없는 항목만 그 일차의 순서로 배정", () => {
+    const plan: TravelPlan = {
+      items: [{ ...A, slot: "evening" }, B],
+    };
+    const m = migratePlan(plan);
+    expect(m.items[0].slot).toBe("evening");
+    // B는 그 일차의 두 번째 항목이므로 lunch
+    expect(m.items[1].slot).toBe("lunch");
+  });
+
+  it("전 항목에 slot이 있으면 같은 참조 반환 (useSyncExternalStore 안정성)", () => {
+    const plan: TravelPlan = {
+      items: [{ ...A, slot: "morning" }, { ...B, slot: "lunch" }],
+    };
+    expect(migratePlan(plan)).toBe(plan);
+    expect(migratePlan(EMPTY_PLAN)).toBe(EMPTY_PLAN);
+  });
+
+  it("멱등 — 두 번 돌려도 결과 동일", () => {
+    const once = migratePlan({ items: [A, B] });
+    expect(migratePlan(once)).toBe(once);
+  });
+});
+
+describe("itemsBySlot / slotOrderedItems", () => {
+  const dayItems: PlanItem[] = [
+    { contentId: 1, title: "숙소", lat: 37, lng: 128, slot: "lodging" },
+    { contentId: 2, title: "오후1", lat: 37, lng: 128, slot: "afternoon" },
+    { contentId: 3, title: "오전1", lat: 37, lng: 128, slot: "morning" },
+    { contentId: 4, title: "오전2", lat: 37, lng: 128, slot: "morning" },
+    { contentId: 5, title: "점심", lat: 37, lng: 128, slot: "lunch" },
+  ];
+
+  it("itemsBySlot: 슬롯별 그룹, 슬롯 내에서는 배열 순서 유지", () => {
+    const g = itemsBySlot(dayItems);
+    expect(g.morning.map((i) => i.contentId)).toEqual([3, 4]);
+    expect(g.lunch.map((i) => i.contentId)).toEqual([5]);
+    expect(g.afternoon.map((i) => i.contentId)).toEqual([2]);
+    expect(g.evening).toEqual([]);
+    expect(g.lodging.map((i) => i.contentId)).toEqual([1]);
+  });
+
+  it("slotOrderedItems: 오전→점심→오후→저녁→숙소 순으로 평탄화", () => {
+    expect(slotOrderedItems(dayItems).map((i) => i.contentId)).toEqual([
+      3, 4, 5, 2, 1,
+    ]);
+  });
+
+  it("slot 없는 항목은 오전으로 취급 (마이그레이션 전 방어)", () => {
+    const g = itemsBySlot([A]);
+    expect(g.morning.map((i) => i.contentId)).toEqual([1]);
+  });
+});
+
+describe("setItemSlot / setItemMemo", () => {
+  it("setItemSlot: 해당 항목의 슬롯만 변경", () => {
+    const p = addItem(addItem(EMPTY_PLAN, { ...A, slot: "morning" }), {
+      ...B,
+      slot: "lunch",
+    });
+    const next = setItemSlot(p, 1, "evening");
+    expect(next.items[0].slot).toBe("evening");
+    expect(next.items[1].slot).toBe("lunch");
+  });
+
+  it("setItemMemo: 메모 저장, 길이 클램프, 빈 문자열은 undefined", () => {
+    const p = addItem(EMPTY_PLAN, A);
+    expect(setItemMemo(p, 1, "예약 2시").items[0].memo).toBe("예약 2시");
+    expect(setItemMemo(p, 1, "가".repeat(200)).items[0].memo).toHaveLength(
+      MEMO_MAX_LEN,
+    );
+    const cleared = setItemMemo(setItemMemo(p, 1, "메모"), 1, "");
+    expect(cleared.items[0].memo).toBeUndefined();
+    expect(setItemMemo(p, 1, "   ").items[0].memo).toBeUndefined();
+  });
+});
+
+describe("defaultSlotFor", () => {
+  const lunchTaken: PlanItem[] = [
+    { contentId: 9, title: "밥", lat: 37, lng: 128, slot: "lunch" },
+  ];
+  const morningTaken: PlanItem[] = [
+    { contentId: 9, title: "관광", lat: 37, lng: 128, slot: "morning" },
+  ];
+
+  it("음식점(39): 점심이 비었으면 lunch, 찼으면 evening", () => {
+    expect(defaultSlotFor(39, [])).toBe("lunch");
+    expect(defaultSlotFor(39, lunchTaken)).toBe("evening");
+  });
+
+  it("그 외: 오전이 비었으면 morning, 찼으면 afternoon", () => {
+    expect(defaultSlotFor(12, [])).toBe("morning");
+    expect(defaultSlotFor(12, morningTaken)).toBe("afternoon");
+    expect(defaultSlotFor(undefined, [])).toBe("morning");
+  });
+});
+
+describe("swapItem — slot·memo 처리", () => {
+  it("교체 시 slot은 유지, memo는 버린다 (옛 장소에 대한 메모)", () => {
+    const p = addItem(EMPTY_PLAN, {
+      ...A,
+      slot: "afternoon",
+      memo: "A에 대한 메모",
+    });
+    const swapped = swapItem(p, 1, { contentId: 7, title: "N", lat: 37, lng: 128 });
+    expect(swapped.items[0].slot).toBe("afternoon");
+    expect(swapped.items[0].memo).toBeUndefined();
+  });
+});
+
+describe("isValidPlan — slot·memo·kind", () => {
+  it("정상 값 통과", () => {
+    expect(
+      isValidPlan({
+        items: [{ ...A, slot: "morning", memo: "m", kind: "lodging" }],
+      }),
+    ).toBe(true);
+    expect(isValidPlan({ items: [{ ...A, slot: "lodging" }] })).toBe(true);
+  });
+
+  it("손상 값 거부", () => {
+    expect(isValidPlan({ items: [{ ...A, slot: "night" }] })).toBe(false);
+    expect(isValidPlan({ items: [{ ...A, slot: 1 }] })).toBe(false);
+    expect(isValidPlan({ items: [{ ...A, memo: 1 }] })).toBe(false);
+    expect(isValidPlan({ items: [{ ...A, kind: "hotel" }] })).toBe(false);
   });
 });

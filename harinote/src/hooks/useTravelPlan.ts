@@ -7,11 +7,15 @@ import {
   EMPTY_PLAN,
   isValidPlan,
   itemsByDay,
+  migratePlan,
   type PlanItem,
+  type PlanSlot,
   removeItem,
   reorder,
   setActiveDay as setActiveDayFn,
   setItemDay,
+  setItemMemo,
+  setItemSlot,
   setTrip,
   totalDays,
   type TravelPlan,
@@ -39,7 +43,8 @@ function readPlan(): TravelPlan {
   cachedRaw = raw;
   try {
     const parsed: unknown = raw ? JSON.parse(raw) : null;
-    cachedPlan = isValidPlan(parsed) ? parsed : EMPTY_PLAN;
+    // 레거시(slot 없는) 계획은 읽는 시점에 슬롯 배정 — 변경 없으면 같은 참조
+    cachedPlan = isValidPlan(parsed) ? migratePlan(parsed) : EMPTY_PLAN;
   } catch {
     cachedPlan = EMPTY_PLAN;
   }
@@ -89,10 +94,12 @@ export function useTravelPlan() {
 
   const add = useCallback((item: PlanItem, day = 1) => write(addItem(readPlan(), item, day)), []);
   const addMany = useCallback((items: PlanItem[], day = 1) => write(addItems(readPlan(), items, day)), []);
-  const replace = useCallback((next: TravelPlan) => write(next), []);
+  const replace = useCallback((next: TravelPlan) => write(migratePlan(next)), []);
   const remove = useCallback((contentId: number) => write(removeItem(readPlan(), contentId)), []);
   const move = useCallback((from: number, to: number) => write(reorder(readPlan(), from, to)), []);
   const moveToDay = useCallback((contentId: number, day: number) => write(setItemDay(readPlan(), contentId, day)), []);
+  const moveToSlot = useCallback((contentId: number, slot: PlanSlot) => write(setItemSlot(readPlan(), contentId, slot)), []);
+  const setMemo = useCallback((contentId: number, memo: string) => write(setItemMemo(readPlan(), contentId, memo)), []);
   const setActiveDay = useCallback((day: number) => write(setActiveDayFn(readPlan(), day)), []);
   const setTripInfo = useCallback((nights: number, from?: string) => write(setTrip(readPlan(), nights, from)), []);
   const clear = useCallback(() => write(EMPTY_PLAN), []);
@@ -110,6 +117,8 @@ export function useTravelPlan() {
     remove,
     move,
     moveToDay,
+    moveToSlot,
+    setMemo,
     setActiveDay,
     setTrip: setTripInfo,
     clear,

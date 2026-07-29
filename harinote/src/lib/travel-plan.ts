@@ -5,6 +5,27 @@
 import { haversineKm } from "@/lib/reco/distance";
 import { isValidISODate } from "@/lib/date";
 
+/** 하루 일정표의 시간 슬롯 — 표시 순서는 PLAN_SLOTS */
+export type PlanSlot = "morning" | "lunch" | "afternoon" | "evening" | "lodging";
+
+export const PLAN_SLOTS: readonly PlanSlot[] = [
+  "morning",
+  "lunch",
+  "afternoon",
+  "evening",
+  "lodging",
+];
+
+export const SLOT_META: Record<PlanSlot, { emoji: string; label: string }> = {
+  morning: { emoji: "🌅", label: "오전" },
+  lunch: { emoji: "🍚", label: "점심" },
+  afternoon: { emoji: "🏞️", label: "오후" },
+  evening: { emoji: "🌆", label: "저녁" },
+  lodging: { emoji: "🛏️", label: "숙소" },
+};
+
+export const MEMO_MAX_LEN = 80;
+
 export interface PlanItem {
   contentId: number;
   title: string;
@@ -14,6 +35,12 @@ export interface PlanItem {
   score?: number;
   /** 몇 일차 일정인지 (1-based). 미지정=1일차 */
   day?: number;
+  /** 하루 중 시간 슬롯. 미지정=레거시 (읽기 시 migratePlan이 채움) */
+  slot?: PlanSlot;
+  /** 스톱별 짧은 메모 (MEMO_MAX_LEN자) */
+  memo?: string;
+  /** 데이터 출처 — 숙박 데이터셋 출신(상세페이지 없음). slot과 별개 */
+  kind?: "lodging";
 }
 
 export interface TravelPlan {
@@ -51,6 +78,84 @@ export function itemsByDay(plan: TravelPlan): PlanItem[][] {
     groups[d - 1].push(it);
   }
   return groups;
+}
+
+/** 레거시 항목의 일차 내 순서 → 슬롯 배정 (기존 코스 담기가 오전→점심→오후 순이라 정합) */
+const LEGACY_SLOT_BY_INDEX: readonly PlanSlot[] = ["morning", "lunch", "afternoon"];
+
+/**
+ * slot 없는 레거시 항목에 일차 내 순서 기반으로 슬롯을 배정.
+ * 전 항목에 slot이 있으면 같은 참조 반환 (useSyncExternalStore getSnapshot 안정성).
+ */
+export function migratePlan(plan: TravelPlan): TravelPlan {
+  if (plan.items.every((it) => it.slot !== undefined)) return plan;
+  const dayCount = new Map<number, number>();
+  const items = plan.items.map((it) => {
+    const day = it.day ?? 1;
+    const idx = dayCount.get(day) ?? 0;
+    dayCount.set(day, idx + 1);
+    if (it.slot !== undefined) return it;
+    return { ...it, slot: LEGACY_SLOT_BY_INDEX[idx] ?? "evening" };
+  });
+  return { ...plan, items };
+}
+
+/** 한 일차의 항목을 슬롯별로 그룹핑 — 슬롯 내 순서는 배열 순서. slot 없으면 오전 취급 */
+export function itemsBySlot(dayItems: PlanItem[]): Record<PlanSlot, PlanItem[]> {
+  const groups: Record<PlanSlot, PlanItem[]> = {
+    morning: [],
+    lunch: [],
+    afternoon: [],
+    evening: [],
+    lodging: [],
+  };
+  for (const it of dayItems) groups[it.slot ?? "morning"].push(it);
+  return groups;
+}
+
+/** 한 일차의 항목을 시간 슬롯 순서로 평탄화 — 거리 체인·지도·리포트 공용 */
+export function slotOrderedItems(dayItems: PlanItem[]): PlanItem[] {
+  const groups = itemsBySlot(dayItems);
+  return PLAN_SLOTS.flatMap((slot) => groups[slot]);
+}
+
+/** 특정 항목의 슬롯 변경 */
+export function setItemSlot(
+  plan: TravelPlan,
+  contentId: number,
+  slot: PlanSlot,
+): TravelPlan {
+  return {
+    ...plan,
+    items: plan.items.map((it) => (it.contentId === contentId ? { ...it, slot } : it)),
+  };
+}
+
+/** 특정 항목의 메모 설정 — MEMO_MAX_LEN 클램프, 공백뿐이면 제거 */
+export function setItemMemo(
+  plan: TravelPlan,
+  contentId: number,
+  memo: string,
+): TravelPlan {
+  const trimmed = memo.trim().slice(0, MEMO_MAX_LEN);
+  return {
+    ...plan,
+    items: plan.items.map((it) =>
+      it.contentId === contentId
+        ? { ...it, memo: trimmed === "" ? undefined : trimmed }
+        : it,
+    ),
+  };
+}
+
+/** 새로 담는 장소의 기본 슬롯 — 음식점(39)은 점심(찼으면 저녁), 그 외 오전(찼으면 오후) */
+export function defaultSlotFor(
+  contentTypeId: number | undefined,
+  dayItems: PlanItem[],
+): PlanSlot {
+  const slots = itemsBySlot(dayItems);
+  if (contentTypeId === 39) return slots.lunch.length === 0 ? "lunch" : "evening";
+  return slots.morning.length === 0 ? "morning" : "afternoon";
 }
 
 /** 박수·시작일 설정 (기간 밖 일차의 항목·활성 일차는 마지막 일차로 당김) */
@@ -94,7 +199,8 @@ export function setActiveDay(plan: TravelPlan, day: number): TravelPlan {
   return { ...plan, activeDay: day };
 }
 
-/** 특정 항목을 같은 자리(순서·일차 유지)에서 다른 관광지로 교체 — 진단의 대체 교체(⇄)용.
+/** 특정 항목을 같은 자리(순서·일차·슬롯 유지)에서 다른 관광지로 교체 — 진단의 대체 교체(⇄)용.
+ *  memo는 옛 장소에 대한 것이므로 버린다.
  *  대상이 없거나 새 항목이 이미 담겨 있으면 no-op (중복 방지 — addItem과 같은 규칙) */
 export function swapItem(
   plan: TravelPlan,
@@ -106,7 +212,9 @@ export function swapItem(
   return {
     ...plan,
     items: plan.items.map((it) =>
-      it.contentId === contentId ? { ...next, day: it.day } : it,
+      it.contentId === contentId
+        ? { ...next, memo: undefined, day: it.day, slot: it.slot }
+        : it,
     ),
   };
 }
@@ -215,6 +323,11 @@ export function isValidPlan(v: unknown): v is TravelPlan {
       typeof (it as PlanItem).title === "string" &&
       typeof (it as PlanItem).lat === "number" &&
       typeof (it as PlanItem).lng === "number" &&
-      isOptionalIntAtLeast((it as PlanItem).day, 1),
+      isOptionalIntAtLeast((it as PlanItem).day, 1) &&
+      ((it as PlanItem).slot === undefined ||
+        PLAN_SLOTS.includes((it as PlanItem).slot as PlanSlot)) &&
+      ((it as PlanItem).memo === undefined ||
+        typeof (it as PlanItem).memo === "string") &&
+      ((it as PlanItem).kind === undefined || (it as PlanItem).kind === "lodging"),
   );
 }
