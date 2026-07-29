@@ -57,6 +57,12 @@ export interface TravelPlan {
 
 export const EMPTY_PLAN: TravelPlan = { items: [] };
 
+/** 드래그 전송 키 — PlannerCard(드래그 소스)와 TravelPlannerPanel 드롭존이 공유 */
+export const PLAN_DRAG_TYPE = "application/x-hari-place";
+
+/** 드래그 페이로드 — 드롭 시 기본 슬롯 계산용 contentTypeId 동봉 */
+export type PlanDragPayload = PlanItem & { contentTypeId?: number };
+
 /** 총 여행 일수 (당일=1, 1박2일=2 …) */
 export function totalDays(plan: TravelPlan): number {
   return (plan.nights ?? 0) + 1;

@@ -6,14 +6,17 @@ import {
   getPlacesWithSafetyOnDate,
   getPlacesWithSafetyOnRange,
   matchesPlaceQuery,
+  type PlaceWithSafety,
 } from "@/lib/datasource";
 import type { Profile } from "@/lib/safety/types";
+import type { PlanDragPayload } from "@/lib/travel-plan";
 import { dayOffsetSeoul, formatKoreanDate } from "@/lib/date";
 import {
   CAT3_CAFE_LABEL,
   CONTENT_TYPE_LABEL,
   SUPPORTED_CONTENT_TYPE_IDS,
 } from "@/lib/tour/types";
+import PlaceCard from "@/components/PlaceCard";
 import PlannerCard from "@/components/PlannerCard";
 import PopularSidebar from "@/components/PopularSidebar";
 import TravelPlannerPanel from "@/components/TravelPlannerPanel";
@@ -59,6 +62,18 @@ const TYPE_TABS: { label: string; value?: PlaceTypeParam }[] = [
 
 interface Props {
   searchParams: Promise<Record<string, SearchParamValue>>;
+}
+
+/** 드래그·담기 페이로드 — 클라이언트 카드 래퍼로 직렬화되는 최소 필드만 추린다 */
+function planItemOf(place: PlaceWithSafety): PlanDragPayload {
+  return {
+    contentId: place.contentId,
+    title: place.title,
+    lat: place.lat,
+    lng: place.lng,
+    score: place.safety.score,
+    contentTypeId: place.contentTypeId,
+  };
 }
 
 export default async function PlacesPage({ searchParams }: Props) {
@@ -341,13 +356,14 @@ async function PlacesResults({
         <>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             {pagePlaces.map((place) => (
-              <PlannerCard
-                key={place.contentId}
-                place={place}
-                profile={profile}
-                date={date}
-                end={end}
-              />
+              <PlannerCard key={place.contentId} item={planItemOf(place)}>
+                <PlaceCard
+                  place={place}
+                  profile={profile}
+                  date={date}
+                  end={end}
+                />
+              </PlannerCard>
             ))}
           </div>
 

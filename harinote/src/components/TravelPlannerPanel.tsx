@@ -7,16 +7,22 @@ import CourseRecommendModal from "@/components/CourseRecommendModal";
 import MultiDayCourseModal from "@/components/MultiDayCourseModal";
 import { useTravelPlan } from "@/hooks/useTravelPlan";
 import { useSavedPlans } from "@/hooks/useSavedPlans";
-import { PLAN_DRAG_TYPE } from "@/components/PlannerCard";
 import {
   dateOfDay,
-  reorderDay,
-  suggestDayOrder,
+  defaultSlotFor,
+  itemsBySlot,
+  MEMO_MAX_LEN,
+  PLAN_DRAG_TYPE,
+  PLAN_SLOTS,
+  SLOT_META,
+  slotOrderedItems,
   swapItem,
   totalDistanceKm,
-  type PlanItem,
+  type PlanDragPayload,
+  type PlanSlot,
   type TravelPlan,
 } from "@/lib/travel-plan";
+import { haversineKm } from "@/lib/reco/distance";
 import { formatKoreanDate, todayISOSeoul } from "@/lib/date";
 import { diagnosePlan } from "@/lib/plan/diagnose-action";
 import { encodePlanQuery } from "@/lib/plan/report-params";
@@ -58,7 +64,7 @@ export default function TravelPlannerPanel({
   transport = "transit",
   sigunguCodes = [],
 }: Props) {
-  const { plan, hydrated, add, has, remove, move, moveToDay, replace, setActiveDay, setTrip, clear, count, days, activeDay, byDay } =
+  const { plan, hydrated, add, has, remove, move, moveToDay, moveToSlot, setMemo, replace, setActiveDay, setTrip, clear, count, days, activeDay, byDay } =
     useTravelPlan();
   // 드래그 중 다른 탭/인스턴스가 계획을 바꿔도 안전하도록 인덱스가 아닌
   // contentId를 기억하고, 이동할 인덱스는 드롭 시점의 최신 계획에서 계산한다
@@ -137,26 +143,54 @@ export default function TravelPlannerPanel({
   }
 
   // 카드에서 온 드롭 페이로드 파싱 (없으면 null = 내부 순서변경)
-  function parseCardDrop(e: React.DragEvent): PlanItem | null {
+  function parseCardDrop(e: React.DragEvent): PlanDragPayload | null {
     const raw = e.dataTransfer.getData(PLAN_DRAG_TYPE);
     if (!raw) return null;
     try {
-      return JSON.parse(raw) as PlanItem;
+      return JSON.parse(raw) as PlanDragPayload;
     } catch {
       return null;
     }
   }
 
-  // 드롭존(빈 공간·컨테이너)에 카드가 떨어지면 활성 일차로 추가.
-  // 이미 담긴 카드면 add가 no-op이라 아무 일도 안 일어남 → 일차 탭 드롭과
-  // 같은 규칙으로 "현재 일차로 이동" 처리
+  // 카드 페이로드를 지정 일차·슬롯에 담기 — 슬롯 미지정이면 카테고리 기반 기본 슬롯.
+  // 이미 담긴 카드면 add가 no-op이라 아무 일도 안 일어남 → "이동" 처리
+  function addPayload(payload: PlanDragPayload, day: number, slot?: PlanSlot) {
+    const { contentTypeId, ...item } = payload;
+    if (has(item.contentId)) {
+      moveToDay(item.contentId, day);
+      if (slot) moveToSlot(item.contentId, slot);
+      return;
+    }
+    add(
+      { ...item, slot: slot ?? defaultSlotFor(contentTypeId, byDay[day - 1] ?? []) },
+      day,
+    );
+  }
+
+  // 드롭존(빈 공간·컨테이너)에 카드가 떨어지면 활성 일차로 추가
   function onZoneDrop(e: React.DragEvent) {
     e.preventDefault();
     setDropActive(false);
-    const item = parseCardDrop(e);
-    if (!item) return;
-    if (has(item.contentId)) moveToDay(item.contentId, activeDay);
-    else add(item, activeDay);
+    const payload = parseCardDrop(e);
+    if (!payload) return;
+    addPayload(payload, activeDay);
+  }
+
+  // 슬롯 섹션 드롭 — 카드는 그 슬롯으로 담고, 내부 항목 드래그는 슬롯 이동
+  function onSlotDrop(e: React.DragEvent, slot: PlanSlot) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDropActive(false);
+    const payload = parseCardDrop(e);
+    if (payload) {
+      addPayload(payload, activeDay, slot);
+      return;
+    }
+    if (dragId !== null) {
+      moveToSlot(dragId, slot);
+      setDragId(null);
+    }
   }
 
   const dayLabel = (d: number) => {
@@ -164,7 +198,14 @@ export default function TravelPlannerPanel({
     return iso ? formatKoreanDate(iso) : `${d}일차`;
   };
 
+  // 메모 편집 중인 항목 (한 번에 하나)
+  const [memoEditId, setMemoEditId] = useState<number | null>(null);
+
   const dayItems = hydrated ? (byDay[activeDay - 1] ?? []) : [];
+  const slotGroups = itemsBySlot(dayItems);
+  // 시간 슬롯 순 체인 — 번호·스톱 간 거리·지도·총거리 공용
+  const orderedDayItems = slotOrderedItems(dayItems);
+  const isLastDay = activeDay === days;
 
   return (
     <aside
@@ -346,13 +387,11 @@ export default function TravelPlannerPanel({
                 if (e.dataTransfer.types.includes(PLAN_DRAG_TYPE)) e.preventDefault();
               }}
               onDrop={(e) => {
-                // 다른 일차 탭 위로 카드를 떨어뜨리면 그 일차로 담김.
-                // 이미 담긴 카드면 add가 no-op이라 탭만 바뀌는 착시가 생김 → 일차 이동으로 처리
-                const item = parseCardDrop(e);
-                if (item) {
+                // 다른 일차 탭 위로 카드를 떨어뜨리면 그 일차로 담김 (이미 담긴 카드는 이동)
+                const payload = parseCardDrop(e);
+                if (payload) {
                   e.preventDefault();
-                  if (has(item.contentId)) moveToDay(item.contentId, d);
-                  else add(item, d);
+                  addPayload(payload, d);
                   setActiveDay(d);
                 }
               }}
@@ -397,9 +436,44 @@ export default function TravelPlannerPanel({
             <span className="font-semibold text-slate-500">+ 계획</span> 버튼으로 담아보세요
           </p>
         ) : (
-          <ol className="space-y-1.5">
-            {dayItems.map((it) => {
+          <div className="space-y-2.5">
+            {PLAN_SLOTS.map((slot) => {
+              // 마지막 일차의 숙소 슬롯은 숨김 (기간 축소로 밀려온 항목이 있으면 유실 방지 위해 표시)
+              if (slot === "lodging" && isLastDay && slotGroups.lodging.length === 0) {
+                return null;
+              }
+              const group = slotGroups[slot];
+              return (
+                <section
+                  key={slot}
+                  aria-label={SLOT_META[slot].label}
+                  onDragOver={(e) => {
+                    if (
+                      e.dataTransfer.types.includes(PLAN_DRAG_TYPE) ||
+                      dragId !== null
+                    ) {
+                      e.preventDefault();
+                    }
+                  }}
+                  onDrop={(e) => onSlotDrop(e, slot)}
+                >
+                  <p className="mb-1 px-1 text-[11px] font-bold text-slate-400">
+                    <span aria-hidden="true">{SLOT_META[slot].emoji}</span>{" "}
+                    {SLOT_META[slot].label}
+                  </p>
+                  {group.length === 0 ? (
+                    <p className="rounded-lg border border-dashed border-slate-200 px-2.5 py-2 text-center text-[11px] text-slate-300">
+                      여기로 드래그해서 담기
+                    </p>
+                  ) : (
+                    <ol className="space-y-1.5">
+                      {group.map((it) => {
               const globalIdx = plan.items.indexOf(it);
+              const orderIdx = orderedDayItems.indexOf(it);
+              const prev = orderIdx > 0 ? orderedDayItems[orderIdx - 1] : null;
+              const legKm = prev
+                ? Math.round(haversineKm(prev.lat, prev.lng, it.lat, it.lng) * 10) / 10
+                : null;
               const stop = diagByStop.get(it.contentId);
               const risky = stop?.grade !== undefined && stop.grade !== null && stop.grade !== "low";
               return (
@@ -422,7 +496,7 @@ export default function TravelPlannerPanel({
                   onDrop={(e) => {
                     const item = parseCardDrop(e);
                     if (item) {
-                      // 외부 카드는 컨테이너가 처리하도록 버블링 (가로채지 않음)
+                      // 외부 카드는 슬롯 섹션이 처리하도록 버블링 (가로채지 않음)
                       return;
                     }
                     e.preventDefault();
@@ -434,6 +508,10 @@ export default function TravelPlannerPanel({
                         : -1;
                     if (fromIdx >= 0 && fromIdx !== globalIdx) {
                       move(fromIdx, globalIdx);
+                      // 다른 슬롯의 항목 위에 떨어뜨리면 그 슬롯으로 합류
+                      if (dragId !== null && it.slot && it.slot !== plan.items[fromIdx].slot) {
+                        moveToSlot(dragId, it.slot);
+                      }
                     }
                     setDragId(null);
                   }}
@@ -441,16 +519,28 @@ export default function TravelPlannerPanel({
                     risky ? "ring-amber-300" : "ring-slate-100"
                   }`}
                 >
+                  {legKm !== null && (
+                    <p className="mb-1 pl-7 text-[10px] font-semibold text-slate-400">
+                      ↓ 직선 {legKm}km
+                    </p>
+                  )}
                   <div className="flex items-center gap-2">
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-teal-600 text-[11px] font-bold text-white">
-                    {dayItems.indexOf(it) + 1}
+                    {orderIdx + 1}
                   </span>
+                  {it.kind === "lodging" ? (
+                    // 숙박 데이터셋 출신 — 상세 페이지가 없어 링크 대신 텍스트
+                    <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700">
+                      {it.title}
+                    </span>
+                  ) : (
                   <Link
                     href={`/places/${it.contentId}`}
                     className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700 hover:text-teal-700"
                   >
                     {it.title}
                   </Link>
+                  )}
                   {stop && stop.score !== null ? (
                     // 진단 점수 — 해당 일차 날짜 기준 (담을 당시 점수를 대체)
                     <span
@@ -475,6 +565,19 @@ export default function TravelPlannerPanel({
                       {it.score}
                     </span>
                   ) : null}
+                  {/* 다른 시간대로 이동 */}
+                  <select
+                    value={it.slot ?? "morning"}
+                    onChange={(e) => moveToSlot(it.contentId, e.target.value as PlanSlot)}
+                    aria-label="시간대 변경"
+                    className="shrink-0 rounded bg-white text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200"
+                  >
+                    {PLAN_SLOTS.map((s) => (
+                      <option key={s} value={s}>
+                        {SLOT_META[s].label}
+                      </option>
+                    ))}
+                  </select>
                   {/* 다른 일차로 이동 (N박일 때) */}
                   {days > 1 && (
                     <select
@@ -492,6 +595,19 @@ export default function TravelPlannerPanel({
                   )}
                   <button
                     type="button"
+                    onClick={() =>
+                      setMemoEditId((v) => (v === it.contentId ? null : it.contentId))
+                    }
+                    aria-label={`${it.title} 메모`}
+                    title="메모"
+                    className={`shrink-0 text-xs transition-colors ${
+                      it.memo ? "text-teal-600" : "text-slate-300 hover:text-teal-600"
+                    }`}
+                  >
+                    📝
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => remove(it.contentId)}
                     aria-label={`${it.title} 빼기`}
                     className="shrink-0 text-slate-300 transition-colors hover:text-red-500"
@@ -499,6 +615,38 @@ export default function TravelPlannerPanel({
                     ✕
                   </button>
                   </div>
+                  {/* 스톱 메모 — 편집 중이면 입력, 아니면 표시(클릭 시 편집) */}
+                  {memoEditId === it.contentId ? (
+                    <input
+                      type="text"
+                      defaultValue={it.memo ?? ""}
+                      maxLength={MEMO_MAX_LEN}
+                      autoFocus
+                      placeholder="메모 (예: 예약 14시, 우산 챙기기)"
+                      aria-label={`${it.title} 메모 입력`}
+                      onBlur={(e) => {
+                        setMemo(it.contentId, e.target.value);
+                        setMemoEditId(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") e.currentTarget.blur();
+                        if (e.key === "Escape") {
+                          // 저장 없이 닫기 — blur 커밋이 원래 값으로 no-op 되게 복원
+                          e.currentTarget.value = it.memo ?? "";
+                          e.currentTarget.blur();
+                        }
+                      }}
+                      className="ml-7 mt-1.5 w-[calc(100%-1.75rem)] rounded-lg bg-white px-2 py-1 text-[11px] text-slate-600 ring-1 ring-teal-300 focus:outline-none"
+                    />
+                  ) : it.memo ? (
+                    <button
+                      type="button"
+                      onClick={() => setMemoEditId(it.contentId)}
+                      className="ml-7 mt-1 block max-w-[calc(100%-1.75rem)] truncate text-left text-[11px] text-slate-500 hover:text-teal-700"
+                    >
+                      {it.memo}
+                    </button>
+                  ) : null}
                   {/* 주의 스톱 — 요인 안내 + 같은 자리 교체 후보 */}
                   {stop && risky && (
                     <div className="mt-1.5 space-y-1 pl-7">
@@ -541,35 +689,28 @@ export default function TravelPlannerPanel({
                   )}
                 </li>
               );
+                      })}
+                    </ol>
+                  )}
+                </section>
+              );
             })}
-          </ol>
+          </div>
         )}
       </div>
 
-      {/* 활성 일차 루트 지도 + 총거리 (2곳 이상) */}
-      {hydrated && dayItems.length >= 2 && (
+      {/* 활성 일차 루트 지도 + 총거리 (2곳 이상) — 시간 슬롯 순 체인 */}
+      {hydrated && orderedDayItems.length >= 2 && (
         <div className="border-t border-slate-100 p-3">
           <div className="mb-2 flex items-center justify-between text-xs font-semibold text-slate-500">
             <span>{days > 1 ? `${activeDay}일차 ` : ""}이동 경로</span>
-            <span className="text-slate-700">직선 {totalDistanceKm(dayItems)}km</span>
+            <span className="text-slate-700">
+              직선 {totalDistanceKm(orderedDayItems)}km
+            </span>
           </div>
           <CourseRouteMap
-            stops={dayItems.map((it) => ({ title: it.title, lat: it.lat, lng: it.lng }))}
+            stops={orderedDayItems.map((it) => ({ title: it.title, lat: it.lat, lng: it.lng }))}
           />
-          {(() => {
-            // 동선 검증 — 우회가 크면(1km·10% 이상) 최근접 이웃 순서를 제안
-            const suggestion = suggestDayOrder(dayItems);
-            return suggestion ? (
-              <button
-                type="button"
-                onClick={() => replace(reorderDay(plan, activeDay, suggestion.items))}
-                className="mt-2 w-full rounded-lg bg-amber-50 px-2.5 py-1.5 text-left text-xs font-semibold text-amber-800 ring-1 ring-amber-200 transition-colors hover:bg-amber-100"
-              >
-                💡 순서를 바꾸면 직선 {suggestion.savedKm}km 절약 —{" "}
-                <span className="underline">적용하기</span>
-              </button>
-            ) : null;
-          })()}
           <p className="mt-1.5 text-[11px] leading-relaxed text-slate-400">
             직선 거리 기준이에요. 실제 소요 시간은 지도 앱에서 확인하세요.
           </p>
