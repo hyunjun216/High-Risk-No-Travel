@@ -73,6 +73,26 @@ export default function TravelPlannerPanel({
   // 드래그 중 커서가 올라가 있는 슬롯 — "여기에 들어간다"를 슬롯 단위로 보여준다
   const [dragOverSlot, setDragOverSlot] = useState<PlanSlot | null>(null);
 
+  // 계획 항목을 패널 밖에 놓으면 빼기 — 내부 드래그 중에만 문서 전체를
+  // 드롭 대상으로 만들고, 패널 안에서의 드롭은 기존 핸들러(이동)에 맡긴다.
+  // Esc 취소는 drop 이벤트가 없어 안전하게 무시된다.
+  const asideRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (dragId === null) return;
+    const onDocOver = (e: DragEvent) => e.preventDefault();
+    const onDocDrop = (e: DragEvent) => {
+      e.preventDefault();
+      if (asideRef.current?.contains(e.target as Node)) return;
+      remove(dragId);
+    };
+    document.addEventListener("dragover", onDocOver);
+    document.addEventListener("drop", onDocDrop);
+    return () => {
+      document.removeEventListener("dragover", onDocOver);
+      document.removeEventListener("drop", onDocDrop);
+    };
+  }, [dragId, remove]);
+
   // 계획 저장 — 인라인 이름 입력 → useSavedPlans에 스냅샷 기록
   const { save } = useSavedPlans();
   const [saving, setSaving] = useState(false);
@@ -212,9 +232,16 @@ export default function TravelPlannerPanel({
 
   return (
     <aside
+      ref={asideRef}
       aria-label="내 여행 계획"
       className={`flex flex-col rounded-2xl bg-white ring-1 ring-slate-200 ${compact ? "" : ""}`}
     >
+      {/* 내부 항목 드래그 중 안내 — 밖에 놓으면 삭제 */}
+      {dragId !== null && (
+        <p className="pointer-events-none fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full bg-slate-900/80 px-4 py-2 text-xs font-semibold text-white shadow-lg">
+          🗑 패널 밖에 놓으면 계획에서 빠져요
+        </p>
+      )}
       <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
         <h2 className="text-base font-bold text-slate-900">
           🗺 내 여행 계획
