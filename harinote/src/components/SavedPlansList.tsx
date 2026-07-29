@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation";
 import CourseRouteMap from "@/components/CourseRouteMap";
 import { useSavedPlans } from "@/hooks/useSavedPlans";
 import { useTravelPlan } from "@/hooks/useTravelPlan";
-import { itemsByDay, totalDays } from "@/lib/travel-plan";
+import { itemsByDay, slotOrderedItems, totalDays } from "@/lib/travel-plan";
 import { encodePlanQuery } from "@/lib/plan/report-params";
 import { formatKoreanDate, todayISOSeoul } from "@/lib/date";
 import type { SavedPlan } from "@/lib/saved-plans";
@@ -117,7 +117,7 @@ export default function SavedPlansList() {
               </div>
             </div>
 
-            {/* 일차별 스톱 체인 — 담긴 순서 그대로 (제목은 저장 스냅샷에 있음) */}
+            {/* 일차별 스톱 체인 — 시간 슬롯 순 (제목은 저장 스냅샷에 있음) */}
             <div className="mt-3 space-y-1 border-t border-slate-100 pt-3">
               {byDay.map((dayItems, i) =>
                 dayItems.length === 0 ? null : (
@@ -127,15 +127,20 @@ export default function SavedPlansList() {
                         {i + 1}일차
                       </span>
                     )}
-                    {dayItems.map((it, j) => (
+                    {slotOrderedItems(dayItems).map((it, j) => (
                       <span key={it.contentId}>
                         {j > 0 && <span className="text-slate-300"> → </span>}
-                        <Link
-                          href={`/places/${it.contentId}`}
-                          className="font-semibold hover:text-teal-700 hover:underline"
-                        >
-                          {it.title}
-                        </Link>
+                        {it.kind === "lodging" ? (
+                          // 숙박 데이터셋 출신 — 상세 페이지가 없어 링크 대신 텍스트
+                          <span className="font-semibold">🛏️ {it.title}</span>
+                        ) : (
+                          <Link
+                            href={`/places/${it.contentId}`}
+                            className="font-semibold hover:text-teal-700 hover:underline"
+                          >
+                            {it.title}
+                          </Link>
+                        )}
                       </span>
                     ))}
                   </p>
@@ -167,11 +172,13 @@ function RouteMapToggle({ saved }: { saved: SavedPlan }) {
       {open && (
         <div className="mt-2">
           <CourseRouteMap
-            stops={saved.plan.items.map((it) => ({
-              title: it.title,
-              lat: it.lat,
-              lng: it.lng,
-            }))}
+            stops={itemsByDay(saved.plan)
+              .flatMap((dayItems) => slotOrderedItems(dayItems))
+              .map((it) => ({
+                title: it.title,
+                lat: it.lat,
+                lng: it.lng,
+              }))}
           />
         </div>
       )}

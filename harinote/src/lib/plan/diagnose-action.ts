@@ -22,6 +22,7 @@ import {
 import { PROFILE_LABEL, type Profile } from "@/lib/safety/types";
 import { CAR_DISTANCE_KM, recommendAlternatives } from "@/lib/reco/alternatives";
 import { addDaysISO, dayOffsetSeoul, isValidISODate, todayISOSeoul } from "@/lib/date";
+import { lodgingById } from "@/lib/tour/lodging";
 import {
   topRiskFactors,
   type PlanDiagnosisDto,
@@ -103,7 +104,9 @@ export async function diagnosePlan(input: {
         alternatives: [],
       };
 
-      const place = await getPlace(it.contentId);
+      // 관광지에 없으면 숙박 데이터셋 폴백 — 계획에 담긴 숙소도 날짜 기준 채점
+      const tourPlace = await getPlace(it.contentId);
+      const place = tourPlace ?? lodgingById(it.contentId);
       if (!place) return unknown;
 
       const isToday = dateISO === today;
@@ -119,13 +122,14 @@ export async function diagnosePlan(input: {
       }
       if (!breakdown) return unknown;
 
-      // 주의 스톱에만 같은 날짜 기준 교체 후보 — 목록 캐시를 공유해 호출 비용 최소화
+      // 주의 스톱에만 같은 날짜 기준 교체 후보 — 목록 캐시를 공유해 호출 비용 최소화.
+      // 숙소는 관광지 후보로 교체할 수 없으므로 제공하지 않는다
       let alternatives: StopDiagnosisDto["alternatives"] = [];
-      if (breakdown.grade !== "low") {
+      if (breakdown.grade !== "low" && tourPlace) {
         const candidates = isToday
           ? await getPlacesWithSafety(undefined, input.profile)
           : await getPlacesWithSafetyOnDate(input.profile, dateISO);
-        const target: PlaceWithSafety = { ...place, safety: breakdown };
+        const target: PlaceWithSafety = { ...tourPlace, safety: breakdown };
         alternatives = recommendAlternatives(target, candidates, ALT_LIMIT, maxKm).map(
           (alt) => ({
             contentId: alt.contentId,

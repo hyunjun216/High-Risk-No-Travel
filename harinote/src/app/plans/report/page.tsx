@@ -11,13 +11,20 @@ import { diagnosePlan } from "@/lib/plan/diagnose-action";
 import { STOP_MODE_LABEL, type StopDiagnosisDto } from "@/lib/plan/diagnose";
 import { parseReportQuery } from "@/lib/plan/report-params";
 import { getPlace } from "@/lib/datasource";
+import { lodgingById, type LodgingPlace } from "@/lib/tour/lodging";
 import type { Place } from "@/lib/tour/types";
 import { buildPlanChecklist } from "@/lib/report/checklist";
 import { medicalDataSource, nearestHospital } from "@/lib/risk/medical";
+import { shelterDataSource } from "@/lib/risk/shelter";
 import { hasLiveRiskKeys } from "@/lib/risk/live";
 import { hasForestKey } from "@/lib/risk/forest";
 import { GRADE_LABEL, PROFILE_LABEL } from "@/lib/safety/types";
-import { totalDistanceKm } from "@/lib/travel-plan";
+import {
+  PLAN_SLOTS,
+  SLOT_META,
+  totalDistanceKm,
+  type PlanSlot,
+} from "@/lib/travel-plan";
 import { addDaysISO, formatKoreanDate } from "@/lib/date";
 import { parseProfile, type SearchParamValue } from "@/components/search-params";
 import ReportActions from "@/components/ReportActions";
@@ -41,7 +48,10 @@ const GRADE_TEXT_CLASS = {
 
 interface ReportRow {
   stop: StopDiagnosisDto;
-  place: Place;
+  place: Place | LodgingPlace;
+  slot?: PlanSlot;
+  /** 숙박 데이터셋 출신 — 상세 페이지가 없어 링크 대신 텍스트 */
+  isLodging: boolean;
 }
 
 export default async function PlanReportPage({ searchParams }: Props) {
@@ -57,18 +67,24 @@ export default async function PlanReportPage({ searchParams }: Props) {
     Promise.all(q.stops.map((st) => getPlace(st.contentId))),
   ]);
 
-  // 데이터에 없는 contentId(깨진 공유 링크 등)는 제외 — 전부 없으면 404
+  // 데이터에 없는 contentId(깨진 공유 링크 등)는 제외 — 전부 없으면 404.
+  // 관광지에 없으면 숙박 데이터셋 폴백 (계획에 담긴 숙소)
   const rows: ReportRow[] = [];
   q.stops.forEach((st, i) => {
-    const place = places[i];
+    const tourPlace = places[i];
+    const place = tourPlace ?? lodgingById(st.contentId);
     const stop = diagnosis.stops[i];
-    if (place && stop) rows.push({ stop, place });
+    if (place && stop) {
+      rows.push({ stop, place, slot: st.slot, isLodging: tourPlace === null });
+    }
   });
   if (rows.length === 0) notFound();
 
   const days = Math.max(...rows.map((r) => r.stop.day));
+  // 일차 안에서는 시간 슬롯 순으로 (레거시 URL의 슬롯 없는 스톱은 원래 순서 유지)
+  const slotIdx = (r: ReportRow) => PLAN_SLOTS.indexOf(r.slot ?? "morning");
   const byDay: ReportRow[][] = Array.from({ length: days }, (_, i) =>
-    rows.filter((r) => r.stop.day === i + 1),
+    rows.filter((r) => r.stop.day === i + 1).sort((a, b) => slotIdx(a) - slotIdx(b)),
   );
 
   const scored = rows.filter((r) => r.stop.score !== null);
@@ -132,13 +148,15 @@ export default async function PlanReportPage({ searchParams }: Props) {
             <ReportActions />
             {/* 공유받은 사람이 이 계획을 자기 플래너로 가져가는 경로 */}
             <ImportPlanButton
-              items={rows.map(({ stop, place }) => ({
+              items={rows.map(({ stop, place, slot, isLodging }) => ({
                 contentId: place.contentId,
                 title: place.title,
                 lat: place.lat,
                 lng: place.lng,
                 score: stop.score ?? undefined,
                 day: stop.day,
+                slot,
+                ...(isLodging ? { kind: "lodging" as const } : {}),
               }))}
               nights={days - 1}
               from={q.from}
@@ -172,7 +190,7 @@ export default async function PlanReportPage({ searchParams }: Props) {
             <section key={i} className="mt-6 print:mt-4">
               <h2 className="text-base font-bold text-slate-900">{dayLabel(i + 1)}</h2>
               <ul className="mt-2 space-y-2">
-                {dayRows.map(({ stop, place }) => {
+                {dayRows.map(({ stop, place, slot, isLodging }) => {
                   const hospital = nearestHospital(place.lat, place.lng, place.contentId);
                   return (
                     <li
@@ -180,12 +198,28 @@ export default async function PlanReportPage({ searchParams }: Props) {
                       className="rounded-xl bg-slate-50 px-4 py-2.5 ring-1 ring-slate-200"
                     >
                       <p className="text-sm font-bold text-slate-800">
-                        <Link
-                          href={`/places/${place.contentId}`}
-                          className="hover:underline"
-                        >
-                          {place.title}
-                        </Link>
+                        {slot && (
+                          <span className="mr-1.5 text-xs font-semibold text-slate-400">
+                            <span aria-hidden="true">{SLOT_META[slot].emoji}</span>{" "}
+                            {SLOT_META[slot].label}
+                          </span>
+                        )}
+                        {isLodging ? (
+                          // 숙박 데이터셋 출신 — 상세 페이지가 없어 링크 대신 텍스트
+                          <>
+                            {place.title}
+                            <span className="ml-1.5 text-xs font-semibold text-slate-400">
+                              숙박(참고)
+                            </span>
+                          </>
+                        ) : (
+                          <Link
+                            href={`/places/${place.contentId}`}
+                            className="hover:underline"
+                          >
+                            {place.title}
+                          </Link>
+                        )}
                         {stop.score !== null && stop.grade !== null ? (
                           <span
                             className={`float-right font-extrabold tabular-nums ${GRADE_TEXT_CLASS[stop.grade]}`}
@@ -315,7 +349,7 @@ export default async function PlanReportPage({ searchParams }: Props) {
             단기예보(내일~3일 뒤) 또는 30년 계절 통계 기준 추정치입니다.
           </p>
           <p className="mt-1">
-            데이터 출처: 한국관광공사 TourAPI · {medicalDataSource()}
+            데이터 출처: 한국관광공사 TourAPI · {medicalDataSource()} · {shelterDataSource()}
             {hasLiveRiskKeys()
               ? hasForestKey()
                 ? " · 기상청 · AirKorea(한국환경공단) · 산림청(산불위험예보)."
