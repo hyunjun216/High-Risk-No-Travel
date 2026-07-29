@@ -255,6 +255,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
                   lng: place.lng,
                   score: safety.score,
                 }}
+                contentTypeId={place.contentTypeId}
               />
               <Link
                 href={`/places/${place.contentId}/report${buildQuery({ profile: profileParam(profile) })}`}
