@@ -70,6 +70,8 @@ export default function TravelPlannerPanel({
   // contentId를 기억하고, 이동할 인덱스는 드롭 시점의 최신 계획에서 계산한다
   const [dragId, setDragId] = useState<number | null>(null);
   const [dropActive, setDropActive] = useState(false);
+  // 드래그 중 커서가 올라가 있는 슬롯 — "여기에 들어간다"를 슬롯 단위로 보여준다
+  const [dragOverSlot, setDragOverSlot] = useState<PlanSlot | null>(null);
 
   // 계획 저장 — 인라인 이름 입력 → useSavedPlans에 스냅샷 기록
   const { save } = useSavedPlans();
@@ -172,6 +174,7 @@ export default function TravelPlannerPanel({
   function onZoneDrop(e: React.DragEvent) {
     e.preventDefault();
     setDropActive(false);
+    setDragOverSlot(null);
     const payload = parseCardDrop(e);
     if (!payload) return;
     addPayload(payload, activeDay);
@@ -426,7 +429,8 @@ export default function TravelPlannerPanel({
         onDragLeave={() => setDropActive(false)}
         onDrop={onZoneDrop}
         className={`mx-3 my-2 min-h-[80px] rounded-xl p-1 transition-colors ${
-          dropActive ? "bg-teal-50 ring-2 ring-teal-300" : ""
+          // 특정 슬롯 위에서는 슬롯 하이라이트만 — 전체 배경까지 켜면 "어디로 들어가는지"가 흐려진다
+          dropActive && dragOverSlot === null ? "bg-teal-50 ring-2 ring-teal-300" : ""
         }`}
       >
         {!hydrated || dayItems.length === 0 ? (
@@ -453,19 +457,45 @@ export default function TravelPlannerPanel({
                       dragId !== null
                     ) {
                       e.preventDefault();
+                      if (dragOverSlot !== slot) setDragOverSlot(slot);
                     }
                   }}
-                  onDrop={(e) => onSlotDrop(e, slot)}
+                  onDragLeave={(e) => {
+                    // 자식 요소로 이동할 때 발생하는 leave는 무시 — 진짜로 섹션을 벗어날 때만 해제
+                    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                      setDragOverSlot((v) => (v === slot ? null : v));
+                    }
+                  }}
+                  onDrop={(e) => {
+                    setDragOverSlot(null);
+                    onSlotDrop(e, slot);
+                  }}
+                  className={`rounded-xl p-1 transition-colors ${
+                    dragOverSlot === slot ? "bg-teal-100/70 ring-2 ring-teal-400" : ""
+                  }`}
                 >
-                  <p className="mb-1 px-1 text-[11px] font-bold text-slate-400">
+                  <p
+                    className={`mb-1 px-1 text-[11px] font-bold ${
+                      dragOverSlot === slot ? "text-teal-700" : "text-slate-400"
+                    }`}
+                  >
                     <span aria-hidden="true">{SLOT_META[slot].emoji}</span>{" "}
                     {SLOT_META[slot].label}
+                    {dragOverSlot === slot && " — 여기에 놓기"}
                   </p>
                   {group.length === 0 ? (
-                    <p className="rounded-lg border border-dashed border-slate-200 px-2.5 py-2 text-center text-[11px] text-slate-300">
-                      {slot === "lodging"
-                        ? "✨ 빈 슬롯 채우기로 숙소 추천을 받아보세요"
-                        : "여기로 드래그해서 담기"}
+                    <p
+                      className={`rounded-lg border border-dashed px-2.5 py-2 text-center text-[11px] transition-colors ${
+                        dragOverSlot === slot
+                          ? "border-teal-400 bg-white/60 font-semibold text-teal-700"
+                          : "border-slate-200 text-slate-300"
+                      }`}
+                    >
+                      {dragOverSlot === slot
+                        ? "여기에 놓기"
+                        : slot === "lodging"
+                          ? "✨ 빈 슬롯 채우기로 숙소 추천을 받아보세요"
+                          : "여기로 드래그해서 담기"}
                     </p>
                   ) : (
                     <ol className="space-y-1.5">
@@ -490,7 +520,10 @@ export default function TravelPlannerPanel({
                   }}
                   // 취소(Esc)·바깥 드롭 포함 어떤 종료에서도 잔류 dragId 정리 —
                   // 남아 있으면 이후 무관한 드래그가 onDrop에서 순서를 뒤섞는다
-                  onDragEnd={() => setDragId(null)}
+                  onDragEnd={() => {
+                    setDragId(null);
+                    setDragOverSlot(null);
+                  }}
                   onDragOver={(e) => {
                     // 내부 순서변경일 때만 이 항목이 드롭을 받는다
                     if (dragId !== null) e.preventDefault();
