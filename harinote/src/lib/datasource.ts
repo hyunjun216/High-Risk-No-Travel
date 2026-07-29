@@ -115,8 +115,8 @@ export async function getPlace(contentId: number): Promise<Place | null> {
 /**
  * 관광지의 위험 계산 입력값 — 항상 live 경로를 사용한다.
  * getLiveRiskInput은 소스별 폴백을 내장하므로 키가 없어도 안전하며,
- * 응급의료 거리(내장 병원 좌표 실계산)는 키·네트워크 없이도 실값이 나온다.
- * 남은 mock: 산불위험(활용신청 승인 전까지). 대피소는 데이터 확보 전까지 축 비활성.
+ * 응급의료·대피소 거리(내장 좌표 실계산)는 키·네트워크 없이도 실값이 나온다.
+ * 산불위험도 활용신청 승인 완료(2026-07-28 스모크 확인)로 실데이터.
  */
 export async function getRiskInput(place: Place): Promise<RiskInput> {
   return getLiveRiskInput(place);
@@ -136,28 +136,64 @@ export async function attachSafety(
 }
 
 /**
- * 전체 관광지 + 안전점수 (profile별). 두 겹 캐시로 무거운 전량 점수 계산을 줄인다:
- * - 프로세스 메모리 캐시(10분 TTL): 서버 인스턴스가 살아있는 동안 요청 간 재사용.
- *   전체 결과가 ~3MB라 Next 데이터 캐시(2MB 상한) 대신 in-memory를 쓴다. 연속 조회(데모·탐색)에 특히 효과적.
+ * 전체 관광지 위험입력(riskInput) 캐시 — profile 무관 1벌.
+ * riskInput은 profile과 무관하고 profile은 computeSafetyScore(전량 실측 ~5ms)에서만
+ * 쓰이므로, 무거운 수집(전량 getLiveRiskInput — 콜드 시 KMA 격자 수백 페치)만 캐시하고
+ * 점수는 요청마다 계산한다. 동행(profile) 전환이 전량 재수집을 유발하지 않게 하기 위함.
+ * - 프로세스 메모리 캐시(10분 TTL): 전체가 ~3MB라 Next 데이터 캐시(2MB 상한) 대신 in-memory.
+ *   만료 시 스테일을 즉시 반환하고 백그라운드로 갱신(SWR) — TTL 절벽에서 임의 사용자가
+ *   갱신 비용을 맞지 않는다. 갱신 실패 시 스테일 유지, 다음 호출에서 재시도.
  * - React cache: 같은 요청 안의 중복 호출(generateMetadata·본문·대체지 등)을 1회로.
  * live 소스는 캐시가 특히 중요(직접 호출은 페이지당 수십 초).
  */
 const PLACES_CACHE_TTL_MS = 10 * 60 * 1000;
-const placesCacheStore = new Map<
-  Profile,
-  { data: PlaceWithSafety[]; expiresAt: number }
->();
+interface RiskInputEntry {
+  place: Place;
+  input: RiskInput;
+}
+let riskInputsStore: { data: RiskInputEntry[]; expiresAt: number } | null = null;
+let riskInputsRefreshing = false;
+
+async function collectRiskInputs(): Promise<RiskInputEntry[]> {
+  const places = await loadPlaces();
+  return Promise.all(
+    places.map(async (place) => ({
+      place,
+      input: await getLiveRiskInput(place),
+    })),
+  );
+}
+
+const getAllRiskInputs = cache(async (): Promise<RiskInputEntry[]> => {
+  if (riskInputsStore) {
+    if (riskInputsStore.expiresAt <= Date.now() && !riskInputsRefreshing) {
+      riskInputsRefreshing = true;
+      void collectRiskInputs()
+        .then((data) => {
+          riskInputsStore = {
+            data,
+            expiresAt: Date.now() + PLACES_CACHE_TTL_MS,
+          };
+        })
+        .catch(() => {})
+        .finally(() => {
+          riskInputsRefreshing = false;
+        });
+    }
+    return riskInputsStore.data;
+  }
+  const data = await collectRiskInputs();
+  riskInputsStore = { data, expiresAt: Date.now() + PLACES_CACHE_TTL_MS };
+  return data;
+});
 
 const getAllWithSafety = cache(
   async (profile: Profile): Promise<PlaceWithSafety[]> => {
-    const hit = placesCacheStore.get(profile);
-    if (hit && hit.expiresAt > Date.now()) return hit.data;
-    const data = await attachSafety(await loadPlaces(), profile);
-    placesCacheStore.set(profile, {
-      data,
-      expiresAt: Date.now() + PLACES_CACHE_TTL_MS,
-    });
-    return data;
+    const entries = await getAllRiskInputs();
+    return entries.map(({ place, input }) => ({
+      ...place,
+      safety: computeSafetyScore(input, place, profile),
+    }));
   },
 );
 
@@ -352,7 +388,9 @@ export const getPlacesWithSafetyOnDate = cache(
     );
 
     if (datePlacesCacheStore.size >= DATE_CACHE_MAX_KEYS) {
-      datePlacesCacheStore.clear();
+      // 전체 clear 대신 최고령 키(삽입 순) 1개만 축출 — 날짜를 오가도 캐시 스래싱 방지
+      const oldest = datePlacesCacheStore.keys().next().value;
+      if (oldest !== undefined) datePlacesCacheStore.delete(oldest);
     }
     datePlacesCacheStore.set(key, {
       data,
@@ -388,7 +426,9 @@ export const getPlacesWithSafetyOnRange = cache(
     );
 
     if (datePlacesCacheStore.size >= DATE_CACHE_MAX_KEYS) {
-      datePlacesCacheStore.clear();
+      // 전체 clear 대신 최고령 키(삽입 순) 1개만 축출 — 날짜를 오가도 캐시 스래싱 방지
+      const oldest = datePlacesCacheStore.keys().next().value;
+      if (oldest !== undefined) datePlacesCacheStore.delete(oldest);
     }
     datePlacesCacheStore.set(key, {
       data,
