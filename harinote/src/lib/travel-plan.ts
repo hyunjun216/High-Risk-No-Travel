@@ -242,65 +242,6 @@ export function totalDistanceKm(items: PlanItem[]): number {
   return Math.round(sum * 10) / 10;
 }
 
-/** 순서 제안 노출 기준 — 이 절약(km·비율)에 못 미치면 제안하지 않는다 */
-const ORDER_MIN_SAVED_KM = 1;
-const ORDER_MIN_SAVED_RATIO = 0.1;
-
-/**
- * 일차 방문 순서 제안 — 첫 스톱 고정, 최근접 이웃 휴리스틱.
- * 현재 순서 대비 절약이 미미하면(1km·10% 미만) null (제안 안 함).
- */
-export function suggestDayOrder(
-  items: PlanItem[],
-): { items: PlanItem[]; savedKm: number } | null {
-  if (items.length < 3) return null;
-  const current = totalDistanceKm(items);
-  const rest = items.slice(1);
-  const ordered = [items[0]];
-  let cur = items[0];
-  while (rest.length > 0) {
-    let best = 0;
-    let bestKm = Infinity;
-    rest.forEach((it, i) => {
-      const km = haversineKm(cur.lat, cur.lng, it.lat, it.lng);
-      if (km < bestKm) {
-        bestKm = km;
-        best = i;
-      }
-    });
-    cur = rest.splice(best, 1)[0];
-    ordered.push(cur);
-  }
-  const savedKm = Math.round((current - totalDistanceKm(ordered)) * 10) / 10;
-  if (savedKm < ORDER_MIN_SAVED_KM || savedKm < current * ORDER_MIN_SAVED_RATIO) {
-    return null;
-  }
-  return { items: ordered, savedKm };
-}
-
-/**
- * 특정 일차의 항목 순서를 통째로 교체 — suggestDayOrder 적용용.
- * ordered가 그 일차 항목의 순열이 아니면 no-op (안전 규칙).
- */
-export function reorderDay(
-  plan: TravelPlan,
-  day: number,
-  ordered: PlanItem[],
-): TravelPlan {
-  const groups = itemsByDay(plan);
-  const idx = day - 1;
-  if (idx < 0 || idx >= groups.length) return plan;
-  const ids = new Set(groups[idx].map((i) => i.contentId));
-  if (
-    ordered.length !== groups[idx].length ||
-    !ordered.every((i) => ids.has(i.contentId))
-  ) {
-    return plan;
-  }
-  groups[idx] = ordered;
-  return { ...plan, items: groups.flat() };
-}
-
 /** undefined 허용 + 1 이상 정수 — 일차·박수류 필드 공용 검사 */
 function isOptionalIntAtLeast(v: unknown, min: number): boolean {
   return v === undefined || (typeof v === "number" && Number.isInteger(v) && v >= min);
