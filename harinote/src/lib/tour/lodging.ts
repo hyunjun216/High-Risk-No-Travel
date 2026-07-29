@@ -33,6 +33,13 @@ interface RawLodging {
 }
 
 let cache: LodgingPlace[] | null = null;
+let byId: Map<number, LodgingPlace> | null = null;
+
+/** contentId로 숙박 조회 — 계획 앵커·진단의 숙소 폴백용 */
+export function lodgingById(contentId: number): LodgingPlace | null {
+  if (!byId) byId = new Map(getLodgings().map((l) => [l.contentId, l]));
+  return byId.get(contentId) ?? null;
+}
 
 /** 내장 숙박 목록 — 손상 항목은 건너뛴다 (빈 배열이어도 코스는 숙소 없이 동작) */
 export function getLodgings(): LodgingPlace[] {

@@ -298,8 +298,8 @@ export default function TravelPlannerPanel({
           transport={transport}
           sigunguCodes={sigunguCodes}
         />
-        {/* N박이면 전체 일정(일차별 코스 + 밤 숙소) 추천도 제공 */}
-        {hydrated && days > 1 && (
+        {/* 담긴 곳이 있으면 "빈 슬롯 채우기", 비어 있는 N박이면 전체 일정 추천 */}
+        {hydrated && (days > 1 || count > 0) && (
           <MultiDayCourseModal
             profile={profile}
             transport={transport}
@@ -463,7 +463,9 @@ export default function TravelPlannerPanel({
                   </p>
                   {group.length === 0 ? (
                     <p className="rounded-lg border border-dashed border-slate-200 px-2.5 py-2 text-center text-[11px] text-slate-300">
-                      여기로 드래그해서 담기
+                      {slot === "lodging"
+                        ? "✨ 빈 슬롯 채우기로 숙소 추천을 받아보세요"
+                        : "여기로 드래그해서 담기"}
                     </p>
                   ) : (
                     <ol className="space-y-1.5">

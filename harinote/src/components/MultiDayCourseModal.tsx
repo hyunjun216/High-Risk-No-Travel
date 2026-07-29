@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * N박 전체 일정 추천 모달 — 플래너 패널에서 열어 시군·테마를 고르면
- * 플래너의 박수·출발일 기준으로 일차별 스톱 + 밤 숙소를 추천하고,
- * "계획에 반영"으로 전 일차를 통째로 채운다 (숙소는 참고 표시만).
+ * 빈 슬롯 채우기 모달 — 플래너 패널에서 열면 담아둔 스톱(앵커)을 그대로 두고
+ * 빈 시간 슬롯(오전/점심/오후/저녁/숙소)만 일차별 날짜 점수 기준으로 추천한다.
+ * 계획이 비어 있으면 기존 "N박 전체 일정 추천"과 동일 동작 (이때만 시군 선택 필수).
+ * "빈 슬롯에 채우기"는 덮어쓰기가 아니라 병합(addMany) — 담아둔 곳은 불변.
  * 동행·이동수단은 검색 필터(여행 조건 패널)에서 자동 상속.
  */
 import { useState, useSyncExternalStore, useTransition } from "react";
@@ -13,25 +14,30 @@ import CourseSigunguPicker from "@/components/CourseSigunguPicker";
 import { courseConditionParts } from "@/components/travel-condition";
 import { COURSE_THEME_META, type CourseTheme } from "@/lib/course/themed";
 import {
-  recommendMultiDayCourse,
-  type MultiDayCourseDto,
-} from "@/lib/course/multi-day-action";
+  fillEmptySlots,
+  type FillSlotsDto,
+  type SlotFillDto,
+} from "@/lib/course/fill-slots-action";
 import { formatKoreanDate } from "@/lib/date";
 import type { Profile } from "@/lib/safety/types";
 import type { Transport } from "@/lib/prefs";
-import type { PlanItem, TravelPlan } from "@/lib/travel-plan";
-
-const SLOT_EMOJI: Record<string, string> = {
-  morning: "🌅",
-  lunch: "🍽️",
-  afternoon: "☀️",
-};
+import {
+  PLAN_SLOTS,
+  SLOT_META,
+  type PlanItem,
+  type PlanSlot,
+} from "@/lib/travel-plan";
 
 const GRADE_TEXT: Record<string, string> = {
   low: "text-teal-600",
   moderate: "text-amber-600",
   high: "text-red-600",
 };
+
+/** 일차 안에서 앵커(담아둔 곳)와 추천 채움을 슬롯 순서로 섞어 보여주기 위한 행 */
+type DayRow =
+  | { type: "anchor"; slot: PlanSlot; item: PlanItem }
+  | { type: "fill"; slot: PlanSlot; fill: SlotFillDto };
 
 export default function MultiDayCourseModal({
   profile,
@@ -44,12 +50,13 @@ export default function MultiDayCourseModal({
   /** 검색 필터의 시군 복수선택 — 1곳이면 자동 선택, 2곳 이상이면 그룹 우선 표시 */
   sigunguCodes: number[];
 }) {
-  const { plan, replace, days } = useTravelPlan();
+  const { plan, addMany, days, count } = useTravelPlan();
   const [open, setOpen] = useState(false);
   const [sigungu, setSigungu] = useState<number | undefined>();
   const [theme, setTheme] = useState<CourseTheme>("nature");
-  const [result, setResult] = useState<MultiDayCourseDto | null>(null);
+  const [result, setResult] = useState<FillSlotsDto | null>(null);
   const [failed, setFailed] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
   const [isPending, startTransition] = useTransition();
   // SSR에서 document.body를 참조하지 않도록 포털 렌더를 마운트 후로 미룬다
   const mounted = useSyncExternalStore(
@@ -58,19 +65,28 @@ export default function MultiDayCourseModal({
     () => false,
   );
 
-  const load = (code: number, t: CourseTheme) => {
+  const hasAnchors = count > 0;
+
+  const load = (code: number | undefined, t: CourseTheme) => {
+    // 앵커가 없으면 1일차 출발 시군이 반드시 필요하다 (서버 검증과 동일 규칙)
+    if (!hasAnchors && code === undefined) return;
     startTransition(async () => {
       try {
-        const data = await recommendMultiDayCourse({
-          sigunguCode: code,
+        const data = await fillEmptySlots({
+          anchors: plan.items.map((it) => ({
+            contentId: it.contentId,
+            day: Math.min(it.day ?? 1, days),
+            slot: it.slot ?? "morning",
+          })),
           theme: t,
+          sigunguCode: code,
           profile,
           days,
           from: plan.from,
           transport,
         });
         setResult(data);
-        setFailed(data === null);
+        setFailed(false);
       } catch {
         setResult(null);
         setFailed(true);
@@ -83,12 +99,16 @@ export default function MultiDayCourseModal({
     const nextTheme = t ?? theme;
     if (code !== undefined) setSigungu(code);
     if (t !== undefined) setTheme(t);
-    if (nextCode !== undefined) load(nextCode, nextTheme);
+    load(nextCode, nextTheme);
   };
 
-  // 열기: 검색 필터에서 시군 1곳만 골랐다면 자동 선택 + 즉시 일정 생성
+  // 열기: 담긴 곳이 있으면 바로 채우기, 없으면 검색 필터의 단일 시군 자동 선택
   const openModal = () => {
     setOpen(true);
+    if (hasAnchors) {
+      load(sigungu, theme);
+      return;
+    }
     if (sigungu === undefined && sigunguCodes.length === 1) {
       setSigungu(sigunguCodes[0]);
       load(sigunguCodes[0], theme);
@@ -96,33 +116,45 @@ export default function MultiDayCourseModal({
   };
 
   const applyToPlan = () => {
-    if (!result) return;
-    if (
-      plan.items.length > 0 &&
-      !window.confirm("지금 담긴 계획을 추천 일정으로 덮어씁니다. 계속할까요?")
-    ) {
+    if (!result || result.fills.length === 0) return;
+    // 병합 — addMany는 중복 contentId를 스킵하므로 담아둔 곳은 그대로다
+    const items: PlanItem[] = result.fills.map((f) => ({
+      contentId: f.place.contentId,
+      title: f.place.title,
+      lat: f.place.lat,
+      lng: f.place.lng,
+      score: f.place.score,
+      day: f.day,
+      slot: f.slot,
+      ...(f.place.contentTypeId === 32 ? { kind: "lodging" as const } : {}),
+    }));
+    // 저장 실패(쿼터·저장소 차단) 시 write()가 false — 모달 닫기를 막는다
+    const ok = addMany(items, 1);
+    if (!ok) {
+      setSaveFailed(true);
+      setTimeout(() => setSaveFailed(false), 2000);
       return;
     }
-    // 숙소는 상세 페이지가 없는 별도 데이터라 계획에는 넣지 않는다 (참고 표시 전용)
-    const items: PlanItem[] = result.days.flatMap((d) =>
-      d.stops.map((s) => ({
-        contentId: s.place.contentId,
-        title: s.place.title,
-        lat: s.place.lat,
-        lng: s.place.lng,
-        score: s.place.score,
-        day: d.day,
-      })),
-    );
-    const next: TravelPlan = {
-      items,
-      nights: plan.nights,
-      from: plan.from,
-      activeDay: 1,
-    };
-    replace(next);
     setOpen(false);
   };
+
+  // 일차별 표시 행 — 앵커(담아둔 곳)와 추천을 슬롯 순서로 병치
+  const slotOrder = (s: PlanSlot) => PLAN_SLOTS.indexOf(s);
+  const rowsOfDay = (d: number): DayRow[] => {
+    const rows: DayRow[] = [
+      ...plan.items
+        .filter((it) => Math.min(it.day ?? 1, days) === d)
+        .map((it): DayRow => ({ type: "anchor", slot: it.slot ?? "morning", item: it })),
+      ...(result?.fills ?? [])
+        .filter((f) => f.day === d)
+        .map((f): DayRow => ({ type: "fill", slot: f.slot, fill: f })),
+    ];
+    return rows.sort((a, b) => slotOrder(a.slot) - slotOrder(b.slot));
+  };
+
+  const title = hasAnchors
+    ? "✨ 빈 슬롯 채우기"
+    : `🧳 ${days - 1}박 전체 일정 추천`;
 
   return (
     <>
@@ -131,7 +163,7 @@ export default function MultiDayCourseModal({
         onClick={openModal}
         className="w-full rounded-xl bg-white px-3 py-2 text-sm font-bold text-teal-700 ring-1 ring-teal-600/40 transition-colors hover:bg-teal-50"
       >
-        🧳 {days - 1}박 전체 일정 추천
+        {title}
       </button>
 
       {/* sticky 패널 안은 스태킹 컨텍스트라 z-50이 갇힌다 — body로 포털 (마운트 후에만) */}
@@ -146,9 +178,7 @@ export default function MultiDayCourseModal({
           />
           <div className="relative max-h-[85vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-5 shadow-xl">
             <div className="flex items-center justify-between">
-              <h2 className="text-base font-bold text-slate-900">
-                🧳 {days - 1}박 {days}일 전체 일정 추천
-              </h2>
+              <h2 className="text-base font-bold text-slate-900">{title}</h2>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
@@ -158,9 +188,12 @@ export default function MultiDayCourseModal({
               </button>
             </div>
             <p className="mt-1 text-xs text-slate-500">
+              {hasAnchors
+                ? "담아둔 곳은 그대로 두고, 그 근처에서 빈 시간대만 채워드려요."
+                : "1일차는 선택한 시군에서, 다음 날은 숙소 근처에서 이어가요."}{" "}
               {plan.from
-                ? `${formatKoreanDate(plan.from)} 출발 기준 — 일차별 날짜 점수로 추천해요`
-                : "출발일 미설정 — 오늘 출발 기준으로 추천해요"}
+                ? `${formatKoreanDate(plan.from)} 출발 기준.`
+                : "출발일 미설정 — 오늘 출발 기준."}
             </p>
 
             {/* 상속된 여행 조건 (편집은 검색 필터에서) */}
@@ -190,16 +223,18 @@ export default function MultiDayCourseModal({
               ))}
             </div>
 
-            {/* 지역 */}
-            <CourseSigunguPicker
-              selected={sigungu}
-              mine={sigunguCodes}
-              onSelect={(code) => pick(code)}
-            />
+            {/* 지역 — 계획이 비어 있을 때만 필수 (앵커가 있으면 앵커 근처 기준) */}
+            {!hasAnchors && (
+              <CourseSigunguPicker
+                selected={sigungu}
+                mine={sigunguCodes}
+                onSelect={(code) => pick(code)}
+              />
+            )}
 
             {/* 결과 */}
             <div className="mt-4">
-              {sigungu === undefined ? (
+              {!hasAnchors && sigungu === undefined ? (
                 <p className="rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
                   시작 지역을 선택해 주세요 — 1일차는 그 시군에서, 다음 날은
                   숙소 근처에서 이어가요.
@@ -210,65 +245,92 @@ export default function MultiDayCourseModal({
                 </p>
               ) : failed ? (
                 <p className="rounded-xl bg-amber-50 px-4 py-6 text-center text-sm font-semibold text-amber-800">
-                  이 조건으로는 일정을 만들지 못했어요 — 다른 테마나 지역을
-                  선택해 보세요.
+                  일정을 만들지 못했어요 — 잠시 후 다시 시도해 주세요.
+                </p>
+              ) : result && result.fills.length === 0 ? (
+                <p className="rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                  이 조건으로 채울 빈 슬롯을 찾지 못했어요 — 다른 테마를
+                  선택하거나, 이미 모든 시간대가 채워져 있는지 확인해 보세요.
                 </p>
               ) : result ? (
                 <>
-                  {result.days.map((day) => (
-                    <section key={day.day} className="mt-3 first:mt-0">
-                      <h3 className="text-sm font-bold text-slate-800">
-                        {day.day}일차{" "}
-                        <span className="font-semibold text-slate-400">
-                          · {formatKoreanDate(day.dateISO)} · 직선 {day.totalKm}km
-                        </span>
-                      </h3>
-                      <ul className="mt-1.5 space-y-1">
-                        {day.stops.map((s) => (
-                          <li
-                            key={s.place.contentId}
-                            className="flex items-center gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5 text-sm ring-1 ring-slate-100"
-                          >
-                            <span aria-hidden="true">{SLOT_EMOJI[s.slot]}</span>
-                            <span className="min-w-0 flex-1 truncate font-semibold text-slate-700">
-                              {s.place.title}
-                            </span>
-                            <span
-                              className={`shrink-0 text-xs font-bold tabular-nums ${GRADE_TEXT[s.place.grade]}`}
-                            >
-                              {s.place.score}
-                            </span>
-                          </li>
-                        ))}
-                        {day.lodging && (
-                          <li className="flex items-center gap-2 rounded-lg bg-sky-50 px-2.5 py-1.5 text-sm ring-1 ring-sky-100">
-                            <span aria-hidden="true">🛏️</span>
-                            <span className="min-w-0 flex-1 truncate font-semibold text-slate-700">
-                              {day.lodging.place.title}
-                            </span>
-                            <span className="shrink-0 text-xs text-slate-400">
-                              {day.lodging.distanceKm}km
-                            </span>
-                            <span
-                              className={`shrink-0 text-xs font-bold tabular-nums ${GRADE_TEXT[day.lodging.place.grade]}`}
-                            >
-                              {day.lodging.place.score}
-                            </span>
-                          </li>
-                        )}
-                      </ul>
-                    </section>
-                  ))}
+                  {Array.from({ length: days }, (_, i) => i + 1).map((d) => {
+                    const rows = rowsOfDay(d);
+                    if (rows.length === 0) return null;
+                    return (
+                      <section key={d} className="mt-3 first:mt-0">
+                        <h3 className="text-sm font-bold text-slate-800">
+                          {d}일차{" "}
+                          <span className="font-semibold text-slate-400">
+                            · {formatKoreanDate(result.dates[d - 1])}
+                          </span>
+                        </h3>
+                        <ul className="mt-1.5 space-y-1">
+                          {rows.map((row) =>
+                            row.type === "anchor" ? (
+                              <li
+                                key={`a${row.item.contentId}`}
+                                className="flex items-center gap-2 rounded-lg bg-slate-100 px-2.5 py-1.5 text-sm ring-1 ring-slate-200"
+                              >
+                                <span aria-hidden="true">
+                                  {SLOT_META[row.slot].emoji}
+                                </span>
+                                <span className="min-w-0 flex-1 truncate font-semibold text-slate-500">
+                                  {row.item.title}
+                                </span>
+                                <span className="shrink-0 text-[11px] font-semibold text-slate-400">
+                                  담아둔 곳
+                                </span>
+                              </li>
+                            ) : (
+                              <li
+                                key={`f${row.fill.place.contentId}`}
+                                className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm ring-1 ${
+                                  row.slot === "lodging"
+                                    ? "bg-sky-50 ring-sky-100"
+                                    : "bg-teal-50/60 ring-teal-100"
+                                }`}
+                              >
+                                <span aria-hidden="true">
+                                  {SLOT_META[row.slot].emoji}
+                                </span>
+                                <span className="min-w-0 flex-1 truncate font-semibold text-slate-700">
+                                  {row.fill.place.title}
+                                </span>
+                                {row.fill.distanceKm > 0 && (
+                                  <span className="shrink-0 text-xs text-slate-400">
+                                    {row.fill.distanceKm}km
+                                  </span>
+                                )}
+                                <span
+                                  className={`shrink-0 text-xs font-bold tabular-nums ${GRADE_TEXT[row.fill.place.grade]}`}
+                                >
+                                  {row.fill.place.score}
+                                </span>
+                              </li>
+                            ),
+                          )}
+                        </ul>
+                      </section>
+                    );
+                  })}
                   <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
                     숙소는 TourAPI 숙박 데이터 기반 참고 정보예요 — 예약·요금은
-                    별도로 확인하세요. 총 직선 {result.totalKm}km.
+                    별도로 확인하세요.
                   </p>
                   <button
                     type="button"
                     onClick={applyToPlan}
-                    className="mt-3 w-full rounded-xl bg-teal-600 px-3 py-2.5 text-sm font-bold text-white transition-colors hover:bg-teal-700"
+                    disabled={result.fills.length === 0}
+                    className={`mt-3 w-full rounded-xl px-3 py-2.5 text-sm font-bold text-white transition-colors ${
+                      saveFailed
+                        ? "bg-red-500"
+                        : "bg-teal-600 hover:bg-teal-700"
+                    }`}
                   >
-                    이 일정으로 계획 채우기 (숙소 제외)
+                    {saveFailed
+                      ? "저장 못 했어요"
+                      : `빈 슬롯에 채우기 (${result.fills.length}곳)`}
                   </button>
                 </>
               ) : null}

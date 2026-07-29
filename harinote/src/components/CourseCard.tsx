@@ -81,7 +81,8 @@ export default function CourseCard({ course, profile, onAdded }: Props) {
   const addCourseToPlan = () => {
     // 저장 실패(쿼터·저장소 차단) 시 write()가 false — 성공 표시·모달 닫기를 막는다
     const ok = addMany(
-      chosen.map((p) => ({ contentId: p.contentId, title: p.title, lat: p.lat, lng: p.lng, score: p.score })),
+      // 코스의 슬롯(오전/점심/오후)을 계획에도 그대로 보존한다
+      chosen.map((p, i) => ({ contentId: p.contentId, title: p.title, lat: p.lat, lng: p.lng, score: p.score, slot: course.stops[i].slot })),
       activeDay,
     );
     if (!ok) {
