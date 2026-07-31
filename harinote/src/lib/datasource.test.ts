@@ -51,6 +51,25 @@ describe("getPlaces — cat3 필터", () => {
     const unfiltered = await getPlaces({ cat3: undefined });
     expect(unfiltered.length).toBe(all.length);
   });
+
+  it("excludeCat3로 카페를 제외하면 음식점에 카페가 남지 않는다", async () => {
+    const meals = await getPlaces({ contentTypeId: 39, excludeCat3: CAT3_CAFE });
+    expect(meals.length).toBeGreaterThan(0);
+    expect(meals.some((p) => p.cat3 === CAT3_CAFE)).toBe(false);
+  });
+
+  it("음식점 = 카페 제외분 + 카페 (완전 분리)", async () => {
+    const all39 = await getPlaces({ contentTypeId: 39 });
+    const meals = await getPlaces({ contentTypeId: 39, excludeCat3: CAT3_CAFE });
+    const cafes = await getPlaces({ contentTypeId: 39, cat3: CAT3_CAFE });
+    expect(meals.length + cafes.length).toBe(all39.length);
+  });
+
+  it("excludeCat3 미지정이면 필터하지 않는다", async () => {
+    const all = await getPlaces();
+    const unfiltered = await getPlaces({ excludeCat3: undefined });
+    expect(unfiltered.length).toBe(all.length);
+  });
 });
 
 // ── 기간 점수 (getRangeSafety · pickWorstDay) ─────────────────────

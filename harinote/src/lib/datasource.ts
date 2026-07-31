@@ -39,6 +39,8 @@ export interface PlaceQuery {
   contentTypeId?: number;
   /** TourAPI 소분류 정확 일치 — 카페 필터 등 */
   cat3?: string;
+  /** TourAPI 소분류 제외 — 음식점 탭에서 카페를 빼 두 탭을 겹치지 않게 한다 */
+  excludeCat3?: string;
   /** TourAPI 강원 시군구 코드 (1~18, regions.ts SIGUNGU_SEATS 키) */
   sigunguCode?: number;
 }
@@ -46,6 +48,15 @@ export interface PlaceQuery {
 export interface PlaceWithSafety extends Place {
   safety: RiskBreakdown;
 }
+
+/**
+ * 필터 술어가 실제로 읽는 필드만 — 숙박(LodgingPlace)처럼 Place의 부분 형태도
+ * 같은 술어로 걸 수 있게 한다 (목록 탭 건수 집계 등).
+ */
+export type QueryablePlace = Pick<
+  Place,
+  "contentTypeId" | "title" | "addr" | "cat3" | "sigunguCode"
+>;
 
 /** 요청 스코프 메모이즈(React cache) — generateMetadata와 페이지 본문의 중복 로드를 1회로 (live 쿼터 보호) */
 const loadPlaces = cache(async (): Promise<Place[]> => {
@@ -79,12 +90,15 @@ const loadPlacesRaw = async (): Promise<Place[]> => {
   }
 };
 
-function matches(place: Place, query?: PlaceQuery): boolean {
+function matches(place: QueryablePlace, query?: PlaceQuery): boolean {
   if (!query) return true;
   if (query.contentTypeId && place.contentTypeId !== query.contentTypeId) {
     return false;
   }
   if (query.cat3 && place.cat3 !== query.cat3) {
+    return false;
+  }
+  if (query.excludeCat3 && place.cat3 === query.excludeCat3) {
     return false;
   }
   if (query.sigunguCode && place.sigunguCode !== query.sigunguCode) {
@@ -103,7 +117,10 @@ export async function getPlaces(query?: PlaceQuery): Promise<Place[]> {
 }
 
 /** 목록 페이지가 날짜별 전량 캐시 결과를 직접 필터링할 때 사용 */
-export function matchesPlaceQuery(place: Place, query?: PlaceQuery): boolean {
+export function matchesPlaceQuery(
+  place: QueryablePlace,
+  query?: PlaceQuery,
+): boolean {
   return matches(place, query);
 }
 

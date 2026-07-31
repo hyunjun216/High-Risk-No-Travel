@@ -41,14 +41,21 @@ export function parsePlaceType(
     : undefined;
 }
 
-/** 유형 파라미터 → PlaceQuery 필드 — "cafe"는 음식점(39) + cat3 소분류 조합, "lodging"은 숙박(32) 데이터셋 */
+/**
+ * 유형 파라미터 → PlaceQuery 필드.
+ * 카페와 음식점은 완전 분리 — "cafe"는 카페 소분류만, 음식점(39)은 카페를 제외한 식사처만.
+ * 여행에서 카페는 식사와 다른 목적의 목적지라 서로 섞이면 어느 쪽도 제대로 못 고른다.
+ * "lodging"은 별도 숙박(32) 데이터셋.
+ */
 export function placeTypeToQuery(t?: PlaceTypeParam): {
   contentTypeId?: ContentTypeId;
   cat3?: string;
+  excludeCat3?: string;
 } {
   if (t === undefined) return {};
   if (t === "cafe") return { contentTypeId: 39, cat3: CAT3_CAFE };
   if (t === "lodging") return { contentTypeId: 32 };
+  if (t === 39) return { contentTypeId: 39, excludeCat3: CAT3_CAFE };
   return { contentTypeId: t };
 }
 

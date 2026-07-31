@@ -114,7 +114,14 @@ describe("placeTypeToQuery", () => {
     });
   });
 
-  it("숫자 유형은 contentTypeId만", () => {
+  it("음식점(39)은 카페 소분류를 제외한다 — 카페 탭과 완전 분리", () => {
+    expect(placeTypeToQuery(39)).toEqual({
+      contentTypeId: 39,
+      excludeCat3: CAT3_CAFE,
+    });
+  });
+
+  it("그 외 숫자 유형은 contentTypeId만", () => {
     expect(placeTypeToQuery(12)).toEqual({ contentTypeId: 12 });
   });
 
