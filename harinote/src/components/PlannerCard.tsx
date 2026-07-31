@@ -40,13 +40,14 @@ export default function PlannerCard({
     >
       {children}
 
-      {/* 담기/담김 토글 — 카드 우하단 오버레이 (Link 밖이라 클릭 전파 없음) */}
+      {/* 담기/담김 토글 — 사진 영역 우하단 오버레이 (Link 밖이라 클릭 전파 없음).
+          top-40 = PlaceCard 이미지 높이(h-40). 카드 본문 위에 두면 소개문을 가린다. */}
       <button
         type="button"
         onClick={() => (added ? remove(item.contentId) : addWithSlot())}
         aria-pressed={added}
         title={added ? "계획에서 빼기" : "여행 계획에 담기"}
-        className={`absolute bottom-3 right-3 z-10 inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-bold shadow-md transition-colors ${
+        className={`absolute right-3 top-40 z-10 inline-flex -translate-y-[calc(100%+0.75rem)] items-center gap-1 rounded-full px-3 py-1.5 text-xs font-bold shadow-md transition-colors ${
           added
             ? "bg-teal-600 text-white hover:bg-teal-700"
             : "bg-white text-teal-700 ring-1 ring-teal-200 hover:bg-teal-50"
