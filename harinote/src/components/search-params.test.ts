@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_RANGE_DAYS,
+  pageWindow,
   parseDateRange,
   parsePlaceType,
   parseSigunguList,
+  parseSort,
   placeTypeToQuery,
   sigunguParam,
   sigunguSummaryLabel,
+  sortParam,
 } from "@/components/search-params";
 import { CAT3_CAFE } from "@/lib/tour/types";
 import { addDaysISO, todayISOSeoul } from "@/lib/date";
@@ -181,5 +184,59 @@ describe("parseDateRange", () => {
       start: isoAfter(366),
     });
     expect(parseDateRange(isoAfter(367), isoAfter(370))).toEqual({});
+  });
+});
+
+describe("parseSort / sortParam", () => {
+  it("화이트리스트 값만 허용", () => {
+    expect(parseSort("relevance")).toBe("relevance");
+    expect(parseSort("popularity")).toBe("popularity");
+    expect(parseSort("safety")).toBe("safety");
+  });
+
+  it("무효·누락은 기본 safety", () => {
+    expect(parseSort("xxx")).toBe("safety");
+    expect(parseSort("")).toBe("safety");
+    expect(parseSort(undefined)).toBe("safety");
+  });
+
+  it("배열이면 첫 값 기준", () => {
+    expect(parseSort(["popularity", "relevance"])).toBe("popularity");
+  });
+
+  it("sortParam: 기본값 safety는 URL에서 생략", () => {
+    expect(sortParam("safety")).toBeUndefined();
+    expect(sortParam("popularity")).toBe("popularity");
+    expect(sortParam("relevance")).toBe("relevance");
+  });
+});
+
+describe("pageWindow", () => {
+  it("total ≤ max면 전체 페이지", () => {
+    expect(pageWindow(1, 3)).toEqual([1, 2, 3]);
+    expect(pageWindow(3, 3)).toEqual([1, 2, 3]);
+    expect(pageWindow(1, 1)).toEqual([1]);
+  });
+
+  it("첫 페이지 근처는 1부터 max개", () => {
+    expect(pageWindow(1, 87)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(pageWindow(4, 87)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  });
+
+  it("중간 페이지는 current를 가운데 둔다", () => {
+    expect(pageWindow(50, 87)).toEqual([46, 47, 48, 49, 50, 51, 52, 53, 54, 55]);
+  });
+
+  it("마지막 페이지 근처는 끝에서 max개", () => {
+    expect(pageWindow(87, 87)).toEqual([78, 79, 80, 81, 82, 83, 84, 85, 86, 87]);
+    expect(pageWindow(84, 87)).toEqual([78, 79, 80, 81, 82, 83, 84, 85, 86, 87]);
+  });
+
+  it("항상 current를 포함하고 max개를 넘지 않는다", () => {
+    for (const [cur, total] of [[1, 5], [2, 20], [11, 11], [7, 100]] as const) {
+      const w = pageWindow(cur, total);
+      expect(w).toContain(cur);
+      expect(w.length).toBeLessThanOrEqual(10);
+    }
   });
 });

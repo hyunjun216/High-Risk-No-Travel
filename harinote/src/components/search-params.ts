@@ -7,6 +7,7 @@ import {
   nightsBetween,
 } from "@/lib/date";
 import { RISK_TYPE_META, type RiskTypeKey } from "@/lib/tour/risk-types";
+import type { SortKey } from "@/lib/places-sort";
 import { SIGUNGU_SEATS } from "@/lib/risk/regions";
 import {
   CAT3_CAFE,
@@ -82,6 +83,30 @@ export function sigunguSummaryLabel(codes: number[]): string {
 export function parsePage(v: SearchParamValue): number {
   const n = Number(first(v));
   return Number.isInteger(n) && n >= 1 ? n : 1;
+}
+
+/** 정렬 파라미터 파싱 — 화이트리스트, 그 외·누락은 기본 안전점수순 */
+export function parseSort(v: SearchParamValue): SortKey {
+  const s = first(v);
+  return s === "relevance" || s === "popularity" ? s : "safety";
+}
+
+/** sort=safety(기본)는 URL에서 생략 */
+export function sortParam(sort: SortKey): string | undefined {
+  return sort === "safety" ? undefined : sort;
+}
+
+/**
+ * 숫자 페이지네이션 창 — current 주변 최대 max개의 페이지 번호.
+ * total ≤ max면 전체, 아니면 current를 가운데 두고 1..total로 클램프해 항상 max개.
+ */
+export function pageWindow(current: number, total: number, max = 10): number[] {
+  const start = Math.min(
+    Math.max(1, current - Math.floor((max - 1) / 2)),
+    Math.max(1, total - max + 1),
+  );
+  const end = Math.min(total, start + max - 1);
+  return Array.from({ length: end - start + 1 }, (_, i) => start + i);
 }
 
 /** 빈 값(undefined, "")을 제외하고 쿼리스트링 생성 ("?q=..&profile=.." 또는 "") */

@@ -28,20 +28,25 @@ import TravelFilterPanel from "@/components/TravelFilterPanel";
 import {
   buildQuery,
   first,
+  pageWindow,
   parseDateRange,
   parsePage,
   parsePet,
   parsePlaceType,
   parseProfile,
   parseSigunguList,
+  parseSort,
   parseTransport,
   placeTypeToQuery,
   profileParam,
   sigunguParam,
   sigunguSummaryLabel,
+  sortParam,
   type PlaceTypeParam,
   type SearchParamValue,
 } from "@/components/search-params";
+import SortDropdown from "@/components/SortDropdown";
+import { sortPlaces, type SortKey } from "@/lib/places-sort";
 import { getLodgingsWithSafety } from "@/lib/tour/lodging-safety";
 import { isPetFriendly } from "@/lib/tour/pet-friendly";
 
@@ -102,6 +107,7 @@ export default async function PlacesPage({ searchParams }: Props) {
   const transport =
     parseTransport(sp.tr) ?? (await savedTransport()) ?? "transit";
   const page = parsePage(sp.page);
+  const sort = parseSort(sp.sort);
 
   // 링크들이 공유하는 현재 조건 — 각 링크는 바꿀 파라미터만 덮어쓴다
   const currentParams = {
@@ -113,6 +119,7 @@ export default async function PlacesPage({ searchParams }: Props) {
     end,
     pet: petParam,
     tr: transport === "transit" ? undefined : transport,
+    sort: sortParam(sort),
   };
 
   // 결과 영역만 Suspense로 격리 — 같은 세그먼트 내 searchParams 전환은 loading.tsx가
@@ -127,6 +134,7 @@ export default async function PlacesPage({ searchParams }: Props) {
     end ?? "",
     petParam ?? "",
     page,
+    sort,
   ].join("|");
 
   return (
@@ -200,6 +208,7 @@ export default async function PlacesPage({ searchParams }: Props) {
           end={end}
           pet={pet}
           page={page}
+          sort={sort}
           currentParams={currentParams}
         />
       </Suspense>
@@ -237,6 +246,7 @@ async function PlacesResults({
   end,
   pet,
   page: pageParam,
+  sort,
   currentParams,
 }: {
   q: string;
@@ -248,11 +258,12 @@ async function PlacesResults({
   end: string | undefined;
   pet: boolean;
   page: number;
+  sort: SortKey;
   currentParams: Record<string, string | number | undefined>;
 }) {
   // 기본 정렬 = 안전점수 높은 순 — "어디가 안전한가"가 서비스의 축이므로
   // 데이터 순서(사실상 가나다)가 아니라 점수가 목록의 기준이어야 한다.
-  // 전량 점수는 10분 메모리 캐시(오늘/날짜별)를 재사용해 부담 없음.
+  // 정확도순·인기순은 places-sort.ts. 전량 점수는 10분 메모리 캐시를 재사용해 부담 없음.
   // 숙박 탭은 별도 내장 데이터셋 — 이후 필터·정렬·페이지네이션은 동일 경로를 탄다.
   const all =
     placeType === "lodging"
@@ -262,7 +273,7 @@ async function PlacesResults({
           ? await getPlacesWithSafetyOnRange(profile, date, end)
           : await getPlacesWithSafetyOnDate(profile, date)
         : await getPlacesWithSafety(undefined, profile);
-  const places = all
+  const filtered = all
     .filter((p) =>
       matchesPlaceQuery(p, {
         q: q || undefined,
@@ -275,8 +286,8 @@ async function PlacesResults({
         sigunguCodes.length === 0 ||
         (p.sigunguCode !== undefined && sigunguCodes.includes(p.sigunguCode)),
     )
-    .filter((p) => !pet || isPetFriendly(p.contentId))
-    .sort((a, b) => b.safety.score - a.safety.score);
+    .filter((p) => !pet || isPetFriendly(p.contentId));
+  const places = sortPlaces(filtered, sort, q);
 
   // 서버 사이드 페이지네이션 — 24건/페이지.
   const totalPages = Math.max(1, Math.ceil(places.length / PAGE_SIZE));
@@ -289,7 +300,8 @@ async function PlacesResults({
 
   return (
     <>
-      <p className="mt-6 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+      <div className="mt-6 flex flex-wrap items-start justify-between gap-2">
+      <p className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
         <span>
           {date && (
             <strong className="text-sky-700">
@@ -337,6 +349,10 @@ async function PlacesResults({
           </Link>
         )}
       </p>
+      {places.length > 0 && (
+        <SortDropdown sort={sort} hasQuery={!!q} currentParams={currentParams} />
+      )}
+      </div>
 
       {places.length === 0 ? (
         <div className="mt-6 rounded-2xl bg-white px-6 py-16 text-center ring-1 ring-slate-200">
@@ -377,43 +393,61 @@ async function PlacesResults({
             ))}
           </div>
 
-          {/* 페이지네이션 */}
+          {/* 페이지네이션 — 현재 페이지 중심 숫자 창(pageWindow) + 이전/다음 */}
           {totalPages > 1 && (
             <nav
               aria-label="페이지 이동"
-              className="mt-8 flex items-center justify-center gap-4"
+              className="mt-8 flex items-center justify-center gap-1.5"
             >
               {page > 1 ? (
                 <Link
                   href={pageHref(page - 1)}
-                  className="rounded-full bg-white px-4 py-1.5 text-sm font-semibold text-slate-600 ring-1 ring-slate-200 transition-colors hover:bg-slate-100"
+                  aria-label="이전 페이지"
+                  className="mr-2 grid h-9 w-9 place-items-center rounded-lg bg-white text-slate-600 ring-1 ring-slate-200 transition-colors hover:bg-slate-100"
                 >
-                  ← 이전
+                  ‹
                 </Link>
               ) : (
                 <span
                   aria-disabled="true"
-                  className="rounded-full bg-slate-50 px-4 py-1.5 text-sm font-semibold text-slate-300 ring-1 ring-slate-100"
+                  className="mr-2 grid h-9 w-9 place-items-center rounded-lg bg-slate-50 text-slate-300 ring-1 ring-slate-100"
                 >
-                  ← 이전
+                  ‹
                 </span>
               )}
-              <span className="text-sm font-semibold tabular-nums text-slate-600">
-                {page} / {totalPages} 페이지
-              </span>
+              {pageWindow(page, totalPages).map((n) =>
+                n === page ? (
+                  <span
+                    key={n}
+                    aria-current="page"
+                    className="grid h-9 w-9 place-items-center rounded-full bg-teal-600 text-sm font-bold tabular-nums text-white"
+                  >
+                    {n}
+                  </span>
+                ) : (
+                  <Link
+                    key={n}
+                    href={pageHref(n)}
+                    className="grid h-9 w-9 place-items-center rounded-full text-sm font-semibold tabular-nums text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                  >
+                    {n}
+                  </Link>
+                ),
+              )}
               {page < totalPages ? (
                 <Link
                   href={pageHref(page + 1)}
-                  className="rounded-full bg-white px-4 py-1.5 text-sm font-semibold text-slate-600 ring-1 ring-slate-200 transition-colors hover:bg-slate-100"
+                  aria-label="다음 페이지"
+                  className="ml-2 grid h-9 w-9 place-items-center rounded-lg bg-white text-slate-600 ring-1 ring-slate-200 transition-colors hover:bg-slate-100"
                 >
-                  다음 →
+                  ›
                 </Link>
               ) : (
                 <span
                   aria-disabled="true"
-                  className="rounded-full bg-slate-50 px-4 py-1.5 text-sm font-semibold text-slate-300 ring-1 ring-slate-100"
+                  className="ml-2 grid h-9 w-9 place-items-center rounded-lg bg-slate-50 text-slate-300 ring-1 ring-slate-100"
                 >
-                  다음 →
+                  ›
                 </span>
               )}
             </nav>
