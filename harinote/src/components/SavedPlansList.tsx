@@ -130,17 +130,14 @@ export default function SavedPlansList() {
                     {slotOrderedItems(dayItems).map((it, j) => (
                       <span key={it.contentId}>
                         {j > 0 && <span className="text-slate-300"> → </span>}
-                        {it.kind === "lodging" ? (
-                          // 숙박 데이터셋 출신 — 상세 페이지가 없어 링크 대신 텍스트
-                          <span className="font-semibold">🛏️ {it.title}</span>
-                        ) : (
-                          <Link
-                            href={`/places/${it.contentId}`}
-                            className="font-semibold hover:text-teal-700 hover:underline"
-                          >
-                            {it.title}
-                          </Link>
-                        )}
+                        {/* 숙박도 상세로 연결된다 (places/[contentId] 폴백) — 🛏️는 숙소 표시 */}
+                        <Link
+                          href={`/places/${it.contentId}`}
+                          className="font-semibold hover:text-teal-700 hover:underline"
+                        >
+                          {it.kind === "lodging" && "🛏️ "}
+                          {it.title}
+                        </Link>
                       </span>
                     ))}
                   </p>

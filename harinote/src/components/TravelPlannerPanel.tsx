@@ -590,19 +590,13 @@ export default function TravelPlannerPanel({
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-teal-600 text-[11px] font-bold text-white">
                     {orderIdx + 1}
                   </span>
-                  {it.kind === "lodging" ? (
-                    // 숙박 데이터셋 출신 — 상세 페이지가 없어 링크 대신 텍스트
-                    <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700">
-                      {it.title}
-                    </span>
-                  ) : (
+                  {/* 숙박도 상세가 있다 — places/[contentId]가 관광지 조회 실패 시 숙박으로 폴백 */}
                   <Link
                     href={`/places/${it.contentId}`}
                     className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700 hover:text-teal-700"
                   >
                     {it.title}
                   </Link>
-                  )}
                   {stop && stop.score !== null ? (
                     // 진단 점수 — 해당 일차 날짜 기준 (담을 당시 점수를 대체)
                     <span

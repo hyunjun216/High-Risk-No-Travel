@@ -50,7 +50,7 @@ interface ReportRow {
   stop: StopDiagnosisDto;
   place: Place | LodgingPlace;
   slot?: PlanSlot;
-  /** 숙박 데이터셋 출신 — 상세 페이지가 없어 링크 대신 텍스트 */
+  /** 숙박 데이터셋 출신 — 스톱 라벨에 "숙박(참고)" 표기 */
   isLodging: boolean;
 }
 
@@ -204,21 +204,17 @@ export default async function PlanReportPage({ searchParams }: Props) {
                             {SLOT_META[slot].label}
                           </span>
                         )}
-                        {isLodging ? (
-                          // 숙박 데이터셋 출신 — 상세 페이지가 없어 링크 대신 텍스트
-                          <>
-                            {place.title}
-                            <span className="ml-1.5 text-xs font-semibold text-slate-400">
-                              숙박(참고)
-                            </span>
-                          </>
-                        ) : (
-                          <Link
-                            href={`/places/${place.contentId}`}
-                            className="hover:underline"
-                          >
-                            {place.title}
-                          </Link>
+                        {/* 숙박도 상세로 연결된다 (places/[contentId] 폴백) */}
+                        <Link
+                          href={`/places/${place.contentId}`}
+                          className="hover:underline"
+                        >
+                          {place.title}
+                        </Link>
+                        {isLodging && (
+                          <span className="ml-1.5 text-xs font-semibold text-slate-400">
+                            숙박(참고)
+                          </span>
                         )}
                         {stop.score !== null && stop.grade !== null ? (
                           <span
