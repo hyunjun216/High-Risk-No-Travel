@@ -59,52 +59,99 @@ export default function RiskBreakdownBar({
     );
   }
 
-  return (
-    <ul className="space-y-4">
-      {factors.map((f) => {
-        const s = LEVEL_STYLE[f.level];
-        const ratio =
-          f.maxPoints > 0 ? Math.min(f.points / f.maxPoints, 1) : 0;
-        const widthPct = f.points > 0 ? Math.max(ratio * 100, 5) : 0;
+  // 감점 있는 요인만 카드로 펼치고, 0점 요인은 접어서 "전부 검토했다"는 근거만 남긴다
+  // (0점 카드가 요인의 절반 이상을 차지해 화면을 늘리기만 했다)
+  const hit = factors.filter((f) => f.points > 0);
+  const clear = factors.filter((f) => f.points === 0);
 
-        return (
-          <li key={f.key} className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
-            <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-              <span className="flex items-center gap-2 text-sm font-bold text-slate-800">
-                {f.label}
-                <span
-                  className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${s.badge}`}
+  return (
+    <>
+      {hit.length === 0 ? (
+        <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 ring-1 ring-emerald-200">
+          특별한 주의 요인이 없어요
+        </p>
+      ) : (
+        <ul className="space-y-4">
+          {hit.map((f) => {
+            const s = LEVEL_STYLE[f.level];
+            const ratio =
+              f.maxPoints > 0 ? Math.min(f.points / f.maxPoints, 1) : 0;
+            const widthPct = Math.max(ratio * 100, 5);
+
+            return (
+              <li
+                key={f.key}
+                className="rounded-xl bg-white p-4 ring-1 ring-slate-200"
+              >
+                <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                  <span className="flex items-center gap-2 text-sm font-bold text-slate-800">
+                    {f.label}
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${s.badge}`}
+                    >
+                      {f.value}
+                      {f.unit}
+                    </span>
+                  </span>
+                  <span className="text-sm font-semibold tabular-nums text-slate-600">
+                    −{f.points}
+                    <span className="text-xs font-normal text-slate-400">
+                      {" "}
+                      / 최대 −{f.maxPoints}점
+                    </span>
+                  </span>
+                </div>
+
+                <div
+                  className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100"
+                  role="img"
+                  aria-label={`${f.label} 감점 ${f.points}점, 상한 ${f.maxPoints}점`}
                 >
+                  <div
+                    className={`h-full rounded-full ${s.bar} transition-[width]`}
+                    style={{ width: `${widthPct}%` }}
+                  />
+                </div>
+
+                <p className="mt-2 text-sm leading-relaxed text-slate-500">
+                  {f.description}
+                </p>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {clear.length > 0 && (
+        <details className="group mt-3 rounded-xl bg-white ring-1 ring-slate-200">
+          <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-slate-600 transition-colors hover:text-teal-700 [&::-webkit-details-marker]:hidden">
+            <span className="mr-1 inline-block transition-transform group-open:rotate-90">
+              ▸
+            </span>
+            <span className="text-emerald-600" aria-hidden="true">
+              ✓
+            </span>{" "}
+            이상 없음 {clear.length}개
+            <span className="ml-2 text-xs font-normal text-slate-400">
+              {clear.map((f) => f.label).join(" · ")}
+            </span>
+          </summary>
+          <ul className="space-y-1.5 border-t border-slate-100 px-4 py-3">
+            {clear.map((f) => (
+              <li key={f.key} className="flex flex-wrap items-baseline gap-x-2">
+                <span className="text-sm font-semibold text-slate-700">
+                  {f.label}
+                </span>
+                <span className="text-xs tabular-nums text-slate-500">
                   {f.value}
                   {f.unit}
                 </span>
-              </span>
-              <span className="text-sm font-semibold tabular-nums text-slate-600">
-                −{f.points}
-                <span className="text-xs font-normal text-slate-400">
-                  {" "}
-                  / 최대 −{f.maxPoints}점
-                </span>
-              </span>
-            </div>
-
-            <div
-              className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100"
-              role="img"
-              aria-label={`${f.label} 감점 ${f.points}점, 상한 ${f.maxPoints}점`}
-            >
-              <div
-                className={`h-full rounded-full ${s.bar} transition-[width]`}
-                style={{ width: `${widthPct}%` }}
-              />
-            </div>
-
-            <p className="mt-2 text-sm leading-relaxed text-slate-500">
-              {f.description}
-            </p>
-          </li>
-        );
-      })}
-    </ul>
+                <span className="text-xs text-slate-400">{f.description}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </>
   );
 }
