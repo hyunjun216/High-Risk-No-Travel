@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { buildQuery, sortParam } from "@/components/search-params";
-import { SORT_LABEL, type SortKey } from "@/lib/places-sort";
+import { availableSortKeys, SORT_LABEL, type SortKey } from "@/lib/places-sort";
 
 interface Props {
   sort: SortKey;
@@ -15,18 +15,30 @@ interface Props {
  * 옵션 클릭 → URL 이동 → 서버 리렌더로 자연히 닫힌다.
  */
 export default function SortDropdown({ sort, hasQuery, currentParams }: Props) {
-  const options = (Object.keys(SORT_LABEL) as SortKey[]).filter(
-    (k) => k !== "relevance" || hasQuery,
-  );
+  // 노출 규칙은 places-sort.ts — 결과가 안전점수순과 같아지는 옵션은 감춘다
+  const options = availableSortKeys(hasQuery);
+  // URL로 감춰진 값(?sort=popularity)이 들어와도 실제 목록 순서는 안전점수순이므로
+  // 라벨은 노출 옵션 안에서만 고른다 — 표시와 실제가 어긋나지 않게.
+  const current = options.includes(sort) ? sort : options[0];
+
+  // 고를 게 하나뿐이면 열어도 선택지가 없다 — 현재 정렬 기준만 표시한다
+  if (options.length < 2) {
+    return (
+      <span className="shrink-0 rounded-full bg-slate-50 px-3.5 py-1.5 text-sm font-semibold text-slate-500">
+        {SORT_LABEL[current]}
+      </span>
+    );
+  }
+
   return (
     <details className="relative shrink-0">
       <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-full bg-white px-3.5 py-1.5 text-sm font-semibold text-slate-600 ring-1 ring-slate-200 transition-colors hover:bg-slate-100 [&::-webkit-details-marker]:hidden">
-        {SORT_LABEL[sort]}
+        {SORT_LABEL[current]}
         <span aria-hidden="true">▾</span>
       </summary>
       <div className="absolute right-0 z-10 mt-1.5 w-36 rounded-xl bg-white p-1.5 shadow-lg ring-1 ring-slate-200">
         {options.map((key) => {
-          const active = key === sort;
+          const active = key === current;
           return (
             <Link
               key={key}

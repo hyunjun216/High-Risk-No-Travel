@@ -7,7 +7,7 @@
  *
  * 모든 정렬의 동점 처리는 안전점수순 — 목록의 기준 축을 유지한다.
  */
-import { visitorCount } from "@/lib/visitors";
+import { hasVisitorData, visitorCount } from "@/lib/visitors";
 
 export type SortKey = "safety" | "relevance" | "popularity";
 
@@ -16,6 +16,22 @@ export const SORT_LABEL: Record<SortKey, string> = {
   relevance: "정확도순",
   popularity: "인기순",
 };
+
+/**
+ * 드롭다운에 노출할 정렬 옵션 — 결과가 안전점수순과 똑같아지는 옵션은 감춘다.
+ * - relevance: 검색어가 없으면 섞을 검색 점수가 없다
+ * - popularity: 입장객 통계가 전건 미매칭이면 모두 동점이 되어 안전점수순과 동일하다
+ * hasVisitors는 테스트 주입용 (sortPlaces의 getVisitors와 같은 규칙).
+ */
+export function availableSortKeys(
+  hasQuery: boolean,
+  hasVisitors: boolean = hasVisitorData(),
+): SortKey[] {
+  return (Object.keys(SORT_LABEL) as SortKey[]).filter(
+    (k) =>
+      (k !== "relevance" || hasQuery) && (k !== "popularity" || hasVisitors),
+  );
+}
 
 interface SortablePlace {
   contentId: number;

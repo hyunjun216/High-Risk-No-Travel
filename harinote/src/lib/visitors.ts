@@ -54,6 +54,14 @@ export function visitorCount(contentId: number): number | undefined {
   return VISITORS.get(contentId);
 }
 
+/**
+ * 입장객 통계가 한 건이라도 있는지 — 전건 미매칭이면 인기순 결과가 안전점수순과
+ * 완전히 같아지므로(places-sort.ts) 드롭다운에서 인기순을 감추는 판단에 쓴다.
+ */
+export function hasVisitorData(): boolean {
+  return VISITORS.size > 0;
+}
+
 /** 출처 표기 — UI 각주용 */
 export function visitorsDataSource(): string {
   return "문화체육관광부·한국문화관광연구원 주요관광지점 입장객통계(공공데이터포털)";

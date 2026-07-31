@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { relevanceTier, sortPlaces } from "@/lib/places-sort";
+import { availableSortKeys, relevanceTier, sortPlaces } from "@/lib/places-sort";
 
 const place = (
   contentId: number,
@@ -61,5 +61,24 @@ describe("sortPlaces", () => {
     const before = items.map((p) => p.contentId);
     sortPlaces(items, "safety", "");
     expect(items.map((p) => p.contentId)).toEqual(before);
+  });
+});
+
+describe("availableSortKeys", () => {
+  it("검색어·입장객 데이터가 모두 있으면 세 옵션", () => {
+    expect(availableSortKeys(true, true)).toEqual([
+      "safety",
+      "relevance",
+      "popularity",
+    ]);
+  });
+
+  it("검색어가 없으면 정확도순을 감춘다", () => {
+    expect(availableSortKeys(false, true)).toEqual(["safety", "popularity"]);
+  });
+
+  it("입장객 데이터가 없으면 인기순을 감춘다 — 안전점수순과 결과가 같다", () => {
+    expect(availableSortKeys(true, false)).toEqual(["safety", "relevance"]);
+    expect(availableSortKeys(false, false)).toEqual(["safety"]);
   });
 });
