@@ -3,19 +3,16 @@ export default function PlaceDetailLoading() {
   return (
     <div className="mx-auto max-w-6xl animate-pulse px-4 py-8">
       <div className="h-4 w-32 rounded bg-slate-100" />
-      {/* 히어로 2단 */}
-      <div className="mt-4 grid gap-6 lg:grid-cols-2">
-        <div className="h-72 rounded-2xl bg-white ring-1 ring-slate-100" />
-        <div>
-          <div className="h-8 w-64 rounded-lg bg-slate-200" />
-          <div className="mt-3 h-5 w-40 rounded-full bg-slate-100" />
-          <div className="mt-6 h-28 rounded-2xl bg-white ring-1 ring-slate-100" />
-        </div>
-      </div>
-      {/* 본문 2단 */}
-      <div className="mt-8 grid gap-6 lg:grid-cols-2">
+      {/* 전폭 헤더 */}
+      <div className="mt-4 h-5 w-32 rounded-full bg-slate-100" />
+      <div className="mt-2 h-8 w-72 rounded-lg bg-slate-200" />
+      <div className="mt-3 h-5 w-52 rounded-full bg-slate-100" />
+      {/* 전폭 갤러리 */}
+      <div className="mt-4 h-64 rounded-2xl bg-white ring-1 ring-slate-100 sm:h-80" />
+      {/* 본문 — 좌 본문 · 우 레일 (실제 페이지와 같은 트랙) */}
+      <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
         <div className="h-96 rounded-2xl bg-white ring-1 ring-slate-100" />
-        <div className="h-96 rounded-2xl bg-white ring-1 ring-slate-100" />
+        <div className="h-[26rem] rounded-2xl bg-white ring-1 ring-slate-100" />
       </div>
     </div>
   );

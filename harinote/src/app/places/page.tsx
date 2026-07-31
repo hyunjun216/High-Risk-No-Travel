@@ -387,7 +387,6 @@ async function PlacesResults({
                   profile={profile}
                   date={date}
                   end={end}
-                  linkless={place.contentTypeId === 32}
                 />
               </PlannerCard>
             ))}

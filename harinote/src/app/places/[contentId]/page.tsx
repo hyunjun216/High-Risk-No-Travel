@@ -20,6 +20,9 @@ import PlaceCard from "@/components/PlaceCard";
 import PlaceGallery from "@/components/PlaceGallery";
 import PlaceMap from "@/components/PlaceMap";
 import { GallerySection, OverviewSection, PetSection, ReviewsSection } from "./sections";
+import LodgingDetail from "./lodging-detail";
+import { lodgingById } from "@/lib/tour/lodging";
+import { getLodgingWithSafety } from "@/lib/tour/lodging-safety";
 import { kidsAmenityLabels, kidsInfoOf } from "@/lib/tour/kids-friendly";
 import { summaryOf } from "@/lib/tour/summaries";
 import AddToPlanButton from "@/components/AddToPlanButton";
@@ -53,7 +56,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const contentId = parseContentId((await params).contentId);
   if (contentId === null) return { title: "관광지 상세" };
   const place = await getPlaceWithSafety(contentId);
-  return { title: place ? `${place.title} 안전 점수` : "관광지 상세" };
+  if (place) return { title: `${place.title} 안전 점수` };
+  // 숙박은 별도 데이터셋 (lodging.gangwon.json)
+  const lodging = lodgingById(contentId);
+  return { title: lodging ? `${lodging.title} 안전 점수` : "관광지 상세" };
 }
 
 export default async function PlaceDetailPage({ params, searchParams }: Props) {
@@ -67,12 +73,30 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
       ? parseProfile(sp.profile)
       : ((await savedProfile()) ?? "default");
   const transport = parseTransport(sp.tr) ?? (await savedTransport()) ?? "transit";
-  const place = await getPlaceWithSafety(contentId, profile);
-  if (!place) notFound();
 
   // 날짜 모드: D+1~3 예보 / D+4~ 계절 범위. 계산 불가면 오늘 모드 유지.
   // 기간 모드(?date=&end=): 일자별 점수 중 최악일이 대표 — 계산 불가면 단일/오늘로 폴백.
   const { start: date, end } = parseDateRange(sp.date, sp.end);
+
+  const place = await getPlaceWithSafety(contentId, profile);
+  if (!place) {
+    // 숙박은 메인 데이터셋에 없다 — 별도 데이터셋에서 찾아 숙박 전용 화면으로
+    const lodging = await getLodgingWithSafety(contentId, profile);
+    if (lodging) {
+      return (
+        <>
+          <PrefsPersist profile={profile} transport={transport} />
+          <LodgingDetail
+            lodging={lodging}
+            profile={profile}
+            date={date}
+            end={end}
+          />
+        </>
+      );
+    }
+    notFound();
+  }
   const rangeSafety =
     date && end ? await getRangeSafety(place, profile, date, end) : null;
   const dateSafety = rangeSafety
@@ -85,7 +109,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
 
   // 대표 점수(랭킹·대체지 비교 기준): 오늘 점수 또는 날짜/최악일 점수(계절은 통상일)
   const safety = dateSafety ? dateSafety.breakdown : place.safety;
-  // 분석 섹션(감점 요약·요인 상세) 기준: 계절 모드는 궂은날 — "무엇을 주의할지"가 목적.
+  // 분석 섹션(카테고리 소계·요인 상세) 기준: 계절 모드는 궂은날 — "무엇을 주의할지"가 목적.
   // 기간 모드에서도 최악일에 같은 규칙을 적용한다 (단일 날짜와 동일 관계).
   const analysisSafety = dateSafety?.seasonal ? dateSafety.seasonal.bad : safety;
 
@@ -116,6 +140,10 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
     transport === "car" ? 1.5 : 1,
   );
 
+  const summary = summaryOf(place.contentId);
+  const kids = kidsInfoOf(place.contentId);
+  const kidsAmenities = kids ? kidsAmenityLabels(kids) : [];
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
       <PrefsPersist profile={profile} transport={transport} />
@@ -126,9 +154,25 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
         <span aria-hidden="true">←</span> 목록으로
       </Link>
 
-      {/* ── 히어로: 좌 갤러리 · 우 제목·점수·프로필 ── */}
-      <div className="mt-4 grid items-start gap-6 lg:grid-cols-2">
-        {/* 좌: 사진 갤러리 — 대표사진 즉시, detailImage2 추가 사진은 스트리밍 */}
+      {/* ── 전폭 헤더: 뱃지·이름·주소 ── */}
+      <div className="mt-4 flex flex-wrap gap-1.5">
+        <span className="rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-semibold text-teal-700 ring-1 ring-teal-200">
+          {placeTypeLabel(place)}
+        </span>
+        <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+          {ENV_TYPE_LABEL[place.envType]}
+        </span>
+      </div>
+      <h1 className="mt-2 text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
+        {place.title}
+      </h1>
+      <p className="mt-1.5 text-sm text-slate-500 sm:text-base">
+        {place.addr}
+        {place.tel && <span className="ml-2 text-slate-400">{place.tel}</span>}
+      </p>
+
+      {/* ── 전폭 갤러리 — 대표사진 즉시, detailImage2 추가 사진은 스트리밍 ── */}
+      <div className="mt-4">
         <Suspense
           fallback={
             <PlaceGallery
@@ -145,47 +189,20 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
             imageUrl={place.imageUrl}
           />
         </Suspense>
+      </div>
 
-        {/* 우: 제목·주소·뱃지 + 안전 점수 + 프로필 */}
-        <div>
-          <div className="flex flex-wrap gap-1.5">
-            <span className="rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-semibold text-teal-700 ring-1 ring-teal-200">
-              {placeTypeLabel(place)}
-            </span>
-            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
-              {ENV_TYPE_LABEL[place.envType]}
-            </span>
-          </div>
-          <h1 className="mt-2 text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
-            {place.title}
-          </h1>
-          <p className="mt-1.5 text-sm text-slate-500 sm:text-base">
-            {place.addr}
-            {place.tel && (
-              <span className="ml-2 text-slate-400">{place.tel}</span>
-            )}
-          </p>
-
-          {/* AI 3줄 요약 — 이름·주소 바로 아래에서 "어떤 곳인지" 즉시 파악 */}
-          {(() => {
-            const summary = summaryOf(place.contentId);
-            if (!summary) return null;
-            return (
-              <div className="mt-3 rounded-xl bg-sky-50/60 px-4 py-3 ring-1 ring-sky-100">
-                <p className="text-xs font-bold text-sky-700">
-                  ⚡ 핵심 3줄
-                  <span className="ml-1.5 font-medium text-sky-400">AI 요약</span>
-                </p>
-                <ul className="mt-1 space-y-0.5 text-sm leading-relaxed text-slate-700">
-                  {summary.map((line) => (
-                    <li key={line}>· {line}</li>
-                  ))}
-                </ul>
-              </div>
-            );
-          })()}
-
-          <div className="mt-6">
+      {/*
+        본문 — 좌: 읽는 흐름(장소 정보 → 안전 분석 → 행동) / 우: 점수·담기·지도 sticky 레일.
+        레일을 DOM 앞에 두면 모바일(단일 컬럼)에서 점수·담기가 먼저 오고, lg에서 order로
+        오른쪽에 붙는다. block 레이아웃은 order를 무시하므로 모바일부터 grid여야 한다.
+        items-start가 없으면 아이템이 stretch돼 sticky가 걸리지 않는다.
+        min-w-0이 없으면 그리드 자식의 min-width:auto가 내부 가로 스크롤러(썸네일·일자
+        스트립)를 밀어내 페이지 전체가 가로로 넘친다.
+      */}
+      <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
+        {/* 우 레일: 스크롤해도 따라오는 점수·담기·지도 */}
+        <div className="order-1 min-w-0 space-y-6 lg:order-2 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
+          <div>
             {dateSafety?.seasonal ? (
               /* 계절 모드: 개별 날짜 예보가 없어 단일 점수를 단정하지 않고 범위로 안내 */
               <div className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
@@ -230,6 +247,25 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
                 }
               />
             )}
+            {/* 카테고리 소계 — 리포트 화면과 같은 표현 */}
+            <p className="mt-2 text-sm font-semibold text-slate-600">
+              {RISK_CATEGORY_LABELS.map((c, i) => (
+                <span key={c.key}>
+                  {i > 0 && <span className="text-slate-300"> · </span>}
+                  {c.label}{" "}
+                  <span
+                    className={`tabular-nums ${analysisSafety[c.key] > 0 ? "text-slate-800" : "text-slate-300"}`}
+                  >
+                    −{analysisSafety[c.key]}점
+                  </span>
+                </span>
+              ))}
+              {dateSafety?.seasonal && (
+                <span className="ml-1.5 font-normal text-slate-400">
+                  궂은날 기준
+                </span>
+              )}
+            </p>
             {dateSafety?.mode === "forecast" && (
               <p className="mt-2 text-xs text-slate-400">
                 기상은 {dateSafety.dayOffset}일 후 예보, 미세먼지·산불위험은
@@ -246,7 +282,10 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
                 />
               </div>
             )}
-            <div className="mt-3 flex flex-wrap gap-2">
+          </div>
+
+          <div>
+            <div className="flex flex-wrap gap-2">
               <AddToPlanButton
                 item={{
                   contentId: place.contentId,
@@ -288,173 +327,22 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
                 기준 점수예요
               </p>
             )}
-            <div className="mt-4">
-              <p className="mb-2 text-sm font-semibold text-slate-600">
-                동행에 따라 점수가 달라져요 —{" "}
-                <strong className="text-teal-700">
-                  {PROFILE_LABEL[profile]} 기준
-                </strong>
-              </p>
-              <ProfileChips
-                basePath={`/places/${place.contentId}`}
-                current={profile}
-                extraParams={{ date: activeDate, end: activeEnd }}
-              />
-            </div>
           </div>
-        </div>
-      </div>
 
-      {/* ── 본문: 좌 안전 분석 · 우 주변·행동 ── */}
-      <div className="mt-8 grid items-start gap-x-6 gap-y-8 lg:grid-cols-2">
-        {/* 좌 컬럼: 왜 이 점수인가 (분석) */}
-        <div className="space-y-8">
-          {/* 카테고리 소계 */}
-          <section>
-            <h2 className="text-lg font-bold text-slate-900">
-              분야별 감점 요약
-              {dateSafety?.seasonal && (
-                <span className="ml-2 text-sm font-semibold text-slate-400">
-                  궂은날 기준
-                </span>
-              )}
-            </h2>
-            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {RISK_CATEGORY_LABELS.map((c) => {
-                const points = analysisSafety[c.key];
-                return (
-                  <div
-                    key={c.key}
-                    className="rounded-xl bg-white p-4 text-center ring-1 ring-slate-200"
-                  >
-                    <span className="text-2xl" aria-hidden="true">
-                      {c.icon}
-                    </span>
-                    <p className="mt-1 text-xs font-semibold text-slate-500">
-                      {c.label}
-                    </p>
-                    <p
-                      className={`text-lg font-extrabold tabular-nums ${
-                        points > 0 ? "text-slate-800" : "text-slate-300"
-                      }`}
-                    >
-                      −{points}점
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-
-          {/* 요인별 상세 — 계절 모드는 궂은날 시나리오 기준 (무엇을 주의할지) */}
-          <section>
-            <h2 className="text-lg font-bold text-slate-900">
-              {dateSafety?.seasonal
-                ? "궂은날엔 이런 점을 주의하세요"
-                : "왜 이 점수인가요?"}
-            </h2>
-            <div className="mt-3">
-              <RiskBreakdownBar factors={analysisSafety.factors} />
-            </div>
-          </section>
-
-          {/* 소개 — TourAPI detailCommon2 실시간 조회 (스트리밍, 없으면 숨김) */}
-          <Suspense fallback={null}>
-            <OverviewSection contentId={contentId} fallback={place.overview} />
-          </Suspense>
-
-          {/* 반려동물 동반 정보 — detailPetTour2 실시간 (없으면 숨김) */}
-          <Suspense fallback={null}>
-            <PetSection contentId={contentId} />
-          </Suspense>
-
-          {/* 유아 동반 편의시설 — 한국문화정보원 데이터 (없으면 숨김) */}
-          {(() => {
-            const kids = kidsInfoOf(place.contentId);
-            if (!kids) return null;
-            const amenities = kidsAmenityLabels(kids);
-            return (
-              <section>
-                <h2 className="text-lg font-bold text-slate-900">
-                  👶 아이와 함께
-                </h2>
-                <div className="mt-2 rounded-xl bg-white p-4 text-sm leading-relaxed text-slate-600 ring-1 ring-slate-200">
-                  {amenities.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {amenities.map((a) => (
-                        <span
-                          key={a}
-                          className="rounded-full bg-pink-50 px-2.5 py-0.5 text-xs font-semibold text-pink-700 ring-1 ring-pink-200"
-                        >
-                          {a}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {kids.age && (
-                    <p className={amenities.length > 0 ? "mt-2" : ""}>
-                      <span className="font-semibold text-slate-700">입장 가능 나이: </span>
-                      {kids.age}
-                    </p>
-                  )}
-                  <p className="mt-2 text-xs text-slate-400">
-                    한국문화정보원 유아 동반 시설 데이터 (2022년 조사 기준) —
-                    방문 전 시설에 확인을 권장해요.
-                  </p>
-                </div>
-              </section>
-            );
-          })()}
-
-          {/* 안전한 대체지 추천 */}
-          <section>
-            <h2 className="text-lg font-bold text-slate-900">안전한 대체지 추천</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              같은 유형의 더 안전한 주변 관광지예요 — {transport === "car" ? `자차 기준 ${CAR_DISTANCE_KM}km` : "대중교통 기준 30km"} 이내 (직선거리)
+          <div>
+            <p className="mb-2 text-sm font-semibold text-slate-600">
+              동행에 따라 점수가 달라져요 —{" "}
+              <strong className="text-teal-700">
+                {PROFILE_LABEL[profile]} 기준
+              </strong>
             </p>
-            {alternatives.length === 0 ? (
-              <div className="mt-3 rounded-2xl bg-teal-50/50 px-6 py-10 text-center ring-1 ring-teal-100">
-                <p className="text-3xl" aria-hidden="true">
-                  🧭
-                </p>
-                <p className="mt-3 font-bold text-slate-700">
-                  이 관광지는 주변 대비 이미 주의 요인이 낮은 편이에요
-                </p>
-                <p className="mt-1 text-sm text-slate-500">
-                  30km 이내에서 안전 점수가 의미 있게 더 높은 관광지를 찾지
-                  못했어요.
-                </p>
-                <Link
-                  href={`/places${buildQuery({ profile: profileParam(profile) })}`}
-                  className="mt-4 inline-block rounded-full bg-teal-50 px-4 py-1.5 text-sm font-semibold text-teal-700 ring-1 ring-teal-200 transition-colors hover:bg-teal-100"
-                >
-                  다른 관광지 둘러보기
-                </Link>
-              </div>
-            ) : (
-              <div className="mt-3 grid gap-4 sm:grid-cols-2">
-                {alternatives.map((alt) => (
-                  <PlaceCard
-                    key={alt.contentId}
-                    place={alt}
-                    profile={profile}
-                    date={activeDate}
-                    end={activeEnd}
-                    footer={
-                      <p className="text-xs font-semibold text-teal-700">
-                        {alt.distanceKm.toFixed(1)}km · 안전점수 +
-                        {alt.safety.score - safety.score}점
-                      </p>
-                    }
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-        </div>
+            <ProfileChips
+              basePath={`/places/${place.contentId}`}
+              current={profile}
+              extraParams={{ date: activeDate, end: activeEnd }}
+            />
+          </div>
 
-        {/* 우 컬럼: 그래서 어디로·무엇을 (행동) */}
-        <div className="space-y-8">
           {/* 위치 지도 */}
           <section>
             <h2 className="text-lg font-bold text-slate-900">위치 보기</h2>
@@ -491,7 +379,137 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
               })}
             />
           </section>
+        </div>
 
+        {/* 좌 본문: 어떤 곳인가 → 왜 이 점수인가 → 그래서 어디로 */}
+        <div className="order-2 min-w-0 space-y-8 lg:order-1">
+          {/* AI 3줄 요약 — 읽는 컬럼의 첫 문장으로 "어떤 곳인지" 즉시 파악 */}
+          {summary && (
+            <div className="rounded-xl bg-sky-50/60 px-4 py-3 ring-1 ring-sky-100">
+              <p className="text-xs font-bold text-sky-700">
+                ⚡ 핵심 3줄
+                <span className="ml-1.5 font-medium text-sky-400">AI 요약</span>
+              </p>
+              <ul className="mt-1 space-y-0.5 text-sm leading-relaxed text-slate-700">
+                {summary.map((line) => (
+                  <li key={line}>· {line}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* 소개 — TourAPI detailCommon2 실시간 조회 (스트리밍, 없으면 숨김) */}
+          <Suspense fallback={null}>
+            <OverviewSection contentId={contentId} fallback={place.overview} />
+          </Suspense>
+
+          {/* 반려동물 동반 정보 — detailPetTour2 실시간 (없으면 숨김) */}
+          <Suspense fallback={null}>
+            <PetSection contentId={contentId} />
+          </Suspense>
+
+          {/* 유아 동반 편의시설 — 한국문화정보원 데이터 (없으면 숨김) */}
+          {kids && (
+            <section>
+              <h2 className="text-lg font-bold text-slate-900">
+                👶 아이와 함께
+              </h2>
+              <div className="mt-2 rounded-xl bg-white p-4 text-sm leading-relaxed text-slate-600 ring-1 ring-slate-200">
+                {kidsAmenities.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {kidsAmenities.map((a) => (
+                      <span
+                        key={a}
+                        className="rounded-full bg-pink-50 px-2.5 py-0.5 text-xs font-semibold text-pink-700 ring-1 ring-pink-200"
+                      >
+                        {a}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {kids.age && (
+                  <p className={kidsAmenities.length > 0 ? "mt-2" : ""}>
+                    <span className="font-semibold text-slate-700">입장 가능 나이: </span>
+                    {kids.age}
+                  </p>
+                )}
+                <p className="mt-2 text-xs text-slate-400">
+                  한국문화정보원 유아 동반 시설 데이터 (2022년 조사 기준) —
+                  방문 전 시설에 확인을 권장해요.
+                </p>
+              </div>
+            </section>
+          )}
+
+          {/* 요인별 상세 — 계절 모드는 궂은날 시나리오 기준 (무엇을 주의할지) */}
+          <section>
+            <h2 className="text-lg font-bold text-slate-900">
+              {dateSafety?.seasonal
+                ? "궂은날엔 이런 점을 주의하세요"
+                : "왜 이 점수인가요?"}
+            </h2>
+            <div className="mt-3">
+              <RiskBreakdownBar factors={analysisSafety.factors} />
+            </div>
+          </section>
+        </div>
+      </div>
+
+      {/*
+        아래 세 섹션은 카드가 넓어야 읽히고 세로도 길다. 좁은 본문 컬럼에 직렬로
+        쌓으면 페이지만 길어지므로 전폭으로 빼서 가로를 쓴다 — 대체지는 한 줄
+        4장, 코스와 후기는 나란히. (원래 2단 레이아웃이 짧았던 건 콘텐츠가
+        병렬로 흘렀기 때문이고, 그 장점만 여기서 되살린다.)
+      */}
+      <div className="mt-8 space-y-8">
+        {/* 안전한 대체지 추천 */}
+        <section>
+            <h2 className="text-lg font-bold text-slate-900">안전한 대체지 추천</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              같은 유형의 더 안전한 주변 관광지예요 — {transport === "car" ? `자차 기준 ${CAR_DISTANCE_KM}km` : "대중교통 기준 30km"} 이내 (직선거리)
+            </p>
+            {alternatives.length === 0 ? (
+              <div className="mt-3 rounded-2xl bg-teal-50/50 px-6 py-10 text-center ring-1 ring-teal-100">
+                <p className="text-3xl" aria-hidden="true">
+                  🧭
+                </p>
+                <p className="mt-3 font-bold text-slate-700">
+                  이 관광지는 주변 대비 이미 주의 요인이 낮은 편이에요
+                </p>
+                <p className="mt-1 text-sm text-slate-500">
+                  30km 이내에서 안전 점수가 의미 있게 더 높은 관광지를 찾지
+                  못했어요.
+                </p>
+                <Link
+                  href={`/places${buildQuery({ profile: profileParam(profile) })}`}
+                  className="mt-4 inline-block rounded-full bg-teal-50 px-4 py-1.5 text-sm font-semibold text-teal-700 ring-1 ring-teal-200 transition-colors hover:bg-teal-100"
+                >
+                  다른 관광지 둘러보기
+                </Link>
+              </div>
+            ) : (
+              <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {alternatives.map((alt) => (
+                  <PlaceCard
+                    key={alt.contentId}
+                    place={alt}
+                    profile={profile}
+                    date={activeDate}
+                    end={activeEnd}
+                    footer={
+                      <p className="text-xs font-semibold text-teal-700">
+                        {alt.distanceKm.toFixed(1)}km · 안전점수 +
+                        {alt.safety.score - safety.score}점
+                      </p>
+                    }
+                  />
+                ))}
+              </div>
+            )}
+        </section>
+
+        {/* 코스와 후기는 세로가 비슷해(각 ~430px) 나란히 두면 낭비 없이 절반이 된다 */}
+        <div className="grid gap-8 lg:grid-cols-2 lg:items-start">
           {/* 추천 반나절 코스 */}
           {course && (
             <section>
@@ -505,7 +523,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
             </section>
           )}
 
-          {/* 방문 후기 — 네이버 블로그 검색 (스트리밍, 후기 없으면 섹션 숨김) */}
+          {/* 방문 후기 (스트리밍, 후기 없으면 섹션 숨김) */}
           <Suspense fallback={null}>
             <ReviewsSection title={place.title} />
           </Suspense>

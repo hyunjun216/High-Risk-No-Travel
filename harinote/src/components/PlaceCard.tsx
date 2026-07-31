@@ -28,25 +28,17 @@ interface Props {
   end?: string;
   /** 카드 하단 추가 정보 (예: 대체지 추천의 거리·점수 비교) */
   footer?: React.ReactNode;
-  /** 상세 페이지 링크 비활성 — 상세가 없는 숙박 카드용 (담기·드래그 전용) */
-  linkless?: boolean;
 }
 
-export default function PlaceCard({
-  place,
-  profile,
-  date,
-  end,
-  footer,
-  linkless,
-}: Props) {
+export default function PlaceCard({ place, profile, date, end, footer }: Props) {
   const ph = ENV_PLACEHOLDER[place.envType];
   const href = `/places/${place.contentId}${buildQuery({ profile: profileParam(profile), date, end })}`;
-  const cardClass =
-    "group overflow-hidden rounded-2xl bg-white ring-1 ring-slate-200 transition-shadow hover:shadow-lg hover:ring-teal-300";
 
-  const body = (
-    <>
+  return (
+    <Link
+      href={href}
+      className="group overflow-hidden rounded-2xl bg-white ring-1 ring-slate-200 transition-shadow hover:shadow-lg hover:ring-teal-300"
+    >
       <div className="relative h-40 overflow-hidden">
         {place.imageUrl ? (
           <Image
@@ -105,13 +97,6 @@ export default function PlaceCard({
         })()}
         {footer}
       </div>
-    </>
-  );
-
-  if (linkless) return <div className={cardClass}>{body}</div>;
-  return (
-    <Link href={href} className={cardClass}>
-      {body}
     </Link>
   );
 }

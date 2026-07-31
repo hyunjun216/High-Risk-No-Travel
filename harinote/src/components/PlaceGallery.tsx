@@ -51,7 +51,9 @@ export default function PlaceGallery({ title, envType, images }: Props) {
 
   return (
     <>
-      <div>
+      {/* min-w-0: 그리드/플렉스 자식이 되면 아래 썸네일 스트립(overflow-x-auto)이
+          내부 스크롤 대신 컬럼을 밀어내 페이지가 가로로 넘친다 */}
+      <div className="min-w-0">
         <button
           type="button"
           onClick={() => setLightbox(true)}
@@ -62,7 +64,7 @@ export default function PlaceGallery({ title, envType, images }: Props) {
             src={current}
             alt={title}
             fill
-            sizes="(max-width: 1024px) 100vw, 640px"
+            sizes="(max-width: 1024px) 100vw, 1120px"
             onError={() => markBroken(current)}
             className="object-cover transition-transform duration-300 hover:scale-105"
           />
