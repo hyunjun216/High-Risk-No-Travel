@@ -1,7 +1,8 @@
 /**
  * 숙박(contentTypeId 32) 후보 — N박 코스 추천 전용.
  * scripts/build-lodging.ts가 만든 내장 JSON을 읽는다 (네트워크·키 불필요).
- * 메인 관광지 데이터셋(gangwon.json)과 분리 — 필터 탭·목록에는 노출하지 않는다.
+ * 메인 관광지 데이터셋(gangwon.json)과 분리 — 목록 노출은 "숙박" 탭에서만
+ * (lodging-safety.ts 경유), 상세 페이지는 없다.
  */
 import lodgingJson from "@/data/lodging.gangwon.json";
 import type { Place } from "@/lib/tour/types";

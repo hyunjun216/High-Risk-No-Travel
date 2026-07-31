@@ -24,28 +24,30 @@ export function parseProfile(v: SearchParamValue): Profile {
   return s && s in PROFILE_LABEL ? (s as Profile) : "default";
 }
 
-/** 유형 탭 파라미터 — 대분류(contentTypeId) 또는 "cafe" 소분류 슬러그 */
-export type PlaceTypeParam = ContentTypeId | "cafe";
+/** 유형 탭 파라미터 — 대분류(contentTypeId) 또는 "cafe"·"lodging" 슬러그 */
+export type PlaceTypeParam = ContentTypeId | "cafe" | "lodging";
 
-/** 유형 파라미터 파싱 — "cafe" 슬러그 또는 SUPPORTED 화이트리스트 숫자만 허용 */
+/** 유형 파라미터 파싱 — "cafe"·"lodging" 슬러그 또는 SUPPORTED 화이트리스트 숫자만 허용 */
 export function parsePlaceType(
   v: SearchParamValue,
 ): PlaceTypeParam | undefined {
   const s = first(v);
   if (s === "cafe") return "cafe";
+  if (s === "lodging") return "lodging";
   const n = Number(s);
   return (SUPPORTED_CONTENT_TYPE_IDS as readonly number[]).includes(n)
     ? (n as ContentTypeId)
     : undefined;
 }
 
-/** 유형 파라미터 → PlaceQuery 필드 — "cafe"는 음식점(39) + cat3 소분류 조합 */
+/** 유형 파라미터 → PlaceQuery 필드 — "cafe"는 음식점(39) + cat3 소분류 조합, "lodging"은 숙박(32) 데이터셋 */
 export function placeTypeToQuery(t?: PlaceTypeParam): {
   contentTypeId?: ContentTypeId;
   cat3?: string;
 } {
   if (t === undefined) return {};
   if (t === "cafe") return { contentTypeId: 39, cat3: CAT3_CAFE };
+  if (t === "lodging") return { contentTypeId: 32 };
   return { contentTypeId: t };
 }
 

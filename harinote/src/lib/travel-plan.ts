@@ -154,12 +154,13 @@ export function setItemMemo(
   };
 }
 
-/** 새로 담는 장소의 기본 슬롯 — 음식점(39)은 점심(찼으면 저녁), 그 외 오전(찼으면 오후) */
+/** 새로 담는 장소의 기본 슬롯 — 숙박(32)은 숙소, 음식점(39)은 점심(찼으면 저녁), 그 외 오전(찼으면 오후) */
 export function defaultSlotFor(
   contentTypeId: number | undefined,
   dayItems: PlanItem[],
 ): PlanSlot {
   const slots = itemsBySlot(dayItems);
+  if (contentTypeId === 32) return "lodging";
   if (contentTypeId === 39) return slots.lunch.length === 0 ? "lunch" : "evening";
   return slots.morning.length === 0 ? "morning" : "afternoon";
 }

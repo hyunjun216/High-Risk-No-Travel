@@ -322,6 +322,14 @@ describe("defaultSlotFor", () => {
     expect(defaultSlotFor(12, morningTaken)).toBe("afternoon");
     expect(defaultSlotFor(undefined, [])).toBe("morning");
   });
+
+  it("숙박(32): 이미 찼어도 항상 lodging", () => {
+    const lodgingTaken: PlanItem[] = [
+      { contentId: 9, title: "호텔", lat: 37, lng: 128, slot: "lodging" },
+    ];
+    expect(defaultSlotFor(32, [])).toBe("lodging");
+    expect(defaultSlotFor(32, lodgingTaken)).toBe("lodging");
+  });
 });
 
 describe("swapItem — slot·memo 처리", () => {

@@ -79,6 +79,11 @@ describe("parsePlaceType", () => {
     expect(parsePlaceType("cafe")).toBe("cafe");
   });
 
+  it('"lodging" 슬러그는 그대로 반환 (숫자 "32"는 계속 거부)', () => {
+    expect(parsePlaceType("lodging")).toBe("lodging");
+    expect(parsePlaceType("32")).toBeUndefined();
+  });
+
   it("SUPPORTED 화이트리스트 숫자는 ContentTypeId로 반환", () => {
     expect(parsePlaceType("12")).toBe(12);
     expect(parsePlaceType("14")).toBe(14);
@@ -108,6 +113,10 @@ describe("placeTypeToQuery", () => {
 
   it("숫자 유형은 contentTypeId만", () => {
     expect(placeTypeToQuery(12)).toEqual({ contentTypeId: 12 });
+  });
+
+  it('"lodging"은 숙박(32)', () => {
+    expect(placeTypeToQuery("lodging")).toEqual({ contentTypeId: 32 });
   });
 
   it("undefined(전체)는 빈 쿼리", () => {

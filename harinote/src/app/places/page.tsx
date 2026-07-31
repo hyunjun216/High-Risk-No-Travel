@@ -42,6 +42,7 @@ import {
   type PlaceTypeParam,
   type SearchParamValue,
 } from "@/components/search-params";
+import { getLodgingsWithSafety } from "@/lib/tour/lodging-safety";
 import { isPetFriendly } from "@/lib/tour/pet-friendly";
 
 const PAGE_SIZE = 24;
@@ -58,6 +59,8 @@ const TYPE_TABS: { label: string; value?: PlaceTypeParam }[] = [
   })),
   // 카페는 음식점(39)의 소분류(cat3) 서브셋 — 음식점 탭에도 포함된 채 별도 탭 제공
   { label: CAT3_CAFE_LABEL, value: "cafe" },
+  // 숙박은 별도 내장 데이터셋(lodging.gangwon.json) — 전체 탭에는 포함되지 않는다
+  { label: CONTENT_TYPE_LABEL[32], value: "lodging" },
 ];
 
 interface Props {
@@ -73,6 +76,8 @@ function planItemOf(place: PlaceWithSafety): PlanDragPayload {
     lng: place.lng,
     score: place.safety.score,
     contentTypeId: place.contentTypeId,
+    // 숙박은 계획 패널·리포트가 kind로 분기 (상세 링크 없음, 숙소 슬롯 표시)
+    ...(place.contentTypeId === 32 ? { kind: "lodging" as const } : {}),
   };
 }
 
@@ -248,11 +253,15 @@ async function PlacesResults({
   // 기본 정렬 = 안전점수 높은 순 — "어디가 안전한가"가 서비스의 축이므로
   // 데이터 순서(사실상 가나다)가 아니라 점수가 목록의 기준이어야 한다.
   // 전량 점수는 10분 메모리 캐시(오늘/날짜별)를 재사용해 부담 없음.
-  const all = date
-    ? end
-      ? await getPlacesWithSafetyOnRange(profile, date, end)
-      : await getPlacesWithSafetyOnDate(profile, date)
-    : await getPlacesWithSafety(undefined, profile);
+  // 숙박 탭은 별도 내장 데이터셋 — 이후 필터·정렬·페이지네이션은 동일 경로를 탄다.
+  const all =
+    placeType === "lodging"
+      ? await getLodgingsWithSafety(profile, date, end)
+      : date
+        ? end
+          ? await getPlacesWithSafetyOnRange(profile, date, end)
+          : await getPlacesWithSafetyOnDate(profile, date)
+        : await getPlacesWithSafety(undefined, profile);
   const places = all
     .filter((p) =>
       matchesPlaceQuery(p, {
@@ -362,6 +371,7 @@ async function PlacesResults({
                   profile={profile}
                   date={date}
                   end={end}
+                  linkless={place.contentTypeId === 32}
                 />
               </PlannerCard>
             ))}
