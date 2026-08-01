@@ -17,26 +17,45 @@ const ENV_PLACEHOLDER: Record<PlaceEnvType, { emoji: string; bg: string }> = {
   outdoor_general: { emoji: "🌳", bg: "from-lime-100 to-emerald-200" },
 };
 
+/**
+ * 사진 틀 — 컨테이너 폭에 따라 비율이 달라야 한다.
+ * wide: 전폭(1152px) 히어로. 3:2로 주면 768px까지 커져 화면을 잡아먹으므로 높이 고정.
+ * half: 절반 컬럼(≈544px). 폭이 좁아 3:2를 줘도 363px이고, 원본 잘림이 10% 내외로 준다.
+ * Tailwind v4는 소스를 스캔하므로 클래스는 반드시 리터럴로 둔다(문자열 조합 금지).
+ */
+const FRAME = {
+  wide: { box: "h-64 sm:h-80", sizes: "(max-width: 1024px) 100vw, 1120px" },
+  half: { box: "aspect-[3/2]", sizes: "(max-width: 1024px) 100vw, 560px" },
+} as const;
+
 interface Props {
   title: string;
   envType: PlaceEnvType;
   /** detailImage2 URL 목록 + 대표사진(imageUrl)을 서버에서 합쳐 중복 제거한 결과 */
   images: string[];
+  /** 사진 틀 비율 — 전폭 히어로는 wide(기본), 2단 그리드의 절반 컬럼은 half */
+  ratio?: keyof typeof FRAME;
 }
 
-export default function PlaceGallery({ title, envType, images }: Props) {
+export default function PlaceGallery({
+  title,
+  envType,
+  images,
+  ratio = "wide",
+}: Props) {
   const [broken, setBroken] = useState<Set<string>>(() => new Set());
   const [active, setActive] = useState(0);
   const [lightbox, setLightbox] = useState(false);
 
+  const frame = FRAME[ratio];
   const usable = images.filter((url) => !broken.has(url));
 
-  // 사진이 하나도 없으면 환경 유형 플레이스홀더
+  // 사진이 하나도 없으면 환경 유형 플레이스홀더 (사진 있을 때와 같은 틀 — 레이아웃 시프트 방지)
   if (usable.length === 0) {
     const ph = ENV_PLACEHOLDER[envType];
     return (
       <div
-        className={`flex h-64 w-full items-center justify-center rounded-2xl bg-gradient-to-br ${ph.bg} sm:h-80`}
+        className={`flex w-full items-center justify-center rounded-2xl bg-gradient-to-br ${frame.box} ${ph.bg}`}
       >
         <span className="text-6xl" aria-hidden="true">
           {ph.emoji}
@@ -57,14 +76,14 @@ export default function PlaceGallery({ title, envType, images }: Props) {
         <button
           type="button"
           onClick={() => setLightbox(true)}
-          className="relative block h-64 w-full overflow-hidden rounded-2xl ring-1 ring-slate-200 sm:h-80"
+          className={`relative block w-full overflow-hidden rounded-2xl ring-1 ring-slate-200 ${frame.box}`}
           aria-label={`${title} 사진 크게 보기`}
         >
           <Image
             src={current}
             alt={title}
             fill
-            sizes="(max-width: 1024px) 100vw, 1120px"
+            sizes={frame.sizes}
             onError={() => markBroken(current)}
             className="object-cover transition-transform duration-300 hover:scale-105"
           />

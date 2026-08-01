@@ -18,18 +18,28 @@ export async function GallerySection({
   title,
   envType,
   imageUrl,
+  ratio,
 }: {
   contentId: number;
   title: string;
   envType: PlaceEnvType;
   imageUrl?: string;
+  /** 사진 틀 비율 — 전폭 히어로(숙박)는 생략, 절반 컬럼(관광지 상세)은 "half" */
+  ratio?: "wide" | "half";
 }) {
   const detailImages = await fetchPlaceImages(contentId);
   const images = [
     ...(imageUrl ? [imageUrl] : []),
     ...detailImages.filter((url) => url !== imageUrl),
   ];
-  return <PlaceGallery title={title} envType={envType} images={images} />;
+  return (
+    <PlaceGallery
+      title={title}
+      envType={envType}
+      images={images}
+      ratio={ratio}
+    />
+  );
 }
 
 /** TourAPI detailCommon2 소개문 — 실시간 조회(24h 캐시), 없으면 섹션 숨김 */
@@ -96,13 +106,12 @@ export async function PetSection({ contentId }: { contentId: number }) {
 export async function ReviewsSection({ title }: { title: string }) {
   const reviews = await fetchBlogReviews(title);
   if (reviews.length === 0) return null;
+  // 마진은 부모 컬럼의 space-y가 담당한다 — 여기서 mt를 주면 옆 컬럼과 상단이 어긋난다
   return (
-    <section className="mt-8">
+    <section>
       <h2 className="text-lg font-bold text-slate-900">방문 후기</h2>
-      <p className="mt-1 text-sm text-slate-500">
-        네이버 블로그에서 <strong>{title}</strong> 방문기를 모았어요. 카드를
-        누르면 원문으로 이동해요.
-      </p>
+      {/* 장소 이름은 h1에, "누르면 원문으로 이동"은 링크 카드에 자명하다 — 출처만 밝힌다 */}
+      <p className="mt-1 text-sm text-slate-500">네이버 블로그 검색 결과예요</p>
       <BlogReviews reviews={reviews} />
     </section>
   );

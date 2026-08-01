@@ -7,12 +7,12 @@ export default function PlaceDetailLoading() {
       <div className="mt-4 h-5 w-32 rounded-full bg-slate-100" />
       <div className="mt-2 h-8 w-72 rounded-lg bg-slate-200" />
       <div className="mt-3 h-5 w-52 rounded-full bg-slate-100" />
-      {/* 전폭 갤러리 */}
-      <div className="mt-4 h-64 rounded-2xl bg-white ring-1 ring-slate-100 sm:h-80" />
-      {/* 본문 — 좌 본문 · 우 레일 (실제 페이지와 같은 트랙) */}
-      <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
-        <div className="h-96 rounded-2xl bg-white ring-1 ring-slate-100" />
-        <div className="h-[26rem] rounded-2xl bg-white ring-1 ring-slate-100" />
+      {/* 전폭 액션 버튼 */}
+      <div className="mt-4 h-8 w-64 rounded-full bg-slate-100" />
+      {/* 상단 — 좌 사진(3:2) · 우 요약·소개·지도 (실제 페이지와 같은 트랙) */}
+      <div className="mt-6 grid gap-8 lg:grid-cols-2 lg:items-start">
+        <div className="aspect-[3/2] rounded-2xl bg-white ring-1 ring-slate-100" />
+        <div className="h-[34rem] rounded-2xl bg-white ring-1 ring-slate-100" />
       </div>
     </div>
   );

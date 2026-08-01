@@ -12,8 +12,9 @@ interface Props {
 export default function BlogReviews({ reviews }: Props) {
   return (
     <ul className="mt-3 grid gap-3 sm:grid-cols-2">
+      {/* li의 min-w-0: 없으면 아래 truncate(nowrap)가 셀의 min-content를 키워 카드가 넘친다 */}
       {reviews.map((r) => (
-        <li key={r.link}>
+        <li key={r.link} className="min-w-0">
           <a
             href={r.link}
             target="_blank"

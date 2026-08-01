@@ -171,37 +171,155 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
         {place.tel && <span className="ml-2 text-slate-400">{place.tel}</span>}
       </p>
 
-      {/* ── 전폭 갤러리 — 대표사진 즉시, detailImage2 추가 사진은 스트리밍 ── */}
-      <div className="mt-4">
-        <Suspense
-          fallback={
-            <PlaceGallery
-              title={place.title}
-              envType={place.envType}
-              images={place.imageUrl ? [place.imageUrl] : []}
-            />
-          }
+      {/* 행동 버튼 — 따라다니는 레일이 없으므로 헤더 바로 아래 전폭에 둔다 (스크롤 없이 담기) */}
+      <div className="mt-4 flex flex-wrap gap-2">
+        <AddToPlanButton
+          item={{
+            contentId: place.contentId,
+            title: place.title,
+            lat: place.lat,
+            lng: place.lng,
+            score: safety.score,
+          }}
+          contentTypeId={place.contentTypeId}
+        />
+        <Link
+          href={`/places/${place.contentId}/report${buildQuery({ profile: profileParam(profile) })}`}
+          className="inline-flex items-center gap-1.5 rounded-full bg-teal-50 px-4 py-1.5 text-sm font-semibold text-teal-700 ring-1 ring-teal-200 transition-colors hover:bg-teal-100"
         >
-          <GallerySection
-            contentId={contentId}
-            title={place.title}
-            envType={place.envType}
-            imageUrl={place.imageUrl}
-          />
-        </Suspense>
+          <span aria-hidden="true">📋</span> 출발 전 체크 리포트
+        </Link>
+        <a
+          href={`https://search.naver.com/search.naver?query=${encodeURIComponent(place.title)}`}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-1.5 text-sm font-semibold text-slate-600 ring-1 ring-slate-200 transition-colors hover:bg-slate-100"
+        >
+          <span aria-hidden="true">🔍</span> 네이버에서 자세히 보기
+        </a>
+        <a
+          href={`https://map.kakao.com/link/to/${encodeURIComponent(place.title)},${place.lat},${place.lng}`}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-1.5 text-sm font-semibold text-slate-600 ring-1 ring-slate-200 transition-colors hover:bg-slate-100"
+        >
+          <span aria-hidden="true">🧭</span> 길찾기 (실제 소요시간)
+        </a>
       </div>
 
       {/*
-        본문 — 좌: 읽는 흐름(장소 정보 → 안전 분석 → 행동) / 우: 점수·담기·지도 sticky 레일.
-        레일을 DOM 앞에 두면 모바일(단일 컬럼)에서 점수·담기가 먼저 오고, lg에서 order로
-        오른쪽에 붙는다. block 레이아웃은 order를 무시하므로 모바일부터 grid여야 한다.
-        items-start가 없으면 아이템이 stretch돼 sticky가 걸리지 않는다.
-        min-w-0이 없으면 그리드 자식의 min-width:auto가 내부 가로 스크롤러(썸네일·일자
-        스트립)를 밀어내 페이지 전체가 가로로 넘친다.
+        상단 — 좌: 사진 / 우: 어떤 곳인가(요약·소개) 위, 어디인가(지도) 아래.
+        사진이 전폭이던 시절엔 1152×320의 납작한 띠라 원본 위아래가 크게 잘리고,
+        그 띠가 본문을 통째로 아래로 밀어냈다. 절반 컬럼(≈544px) + 3:2로 바꾸면
+        잘림이 10% 내외로 줄고 남는 오른쪽이 첫 화면 정보량이 된다.
+        min-w-0: 그리드 자식의 min-width:auto가 내부 가로 스크롤러(썸네일 스트립)를
+        밀어내 페이지 전체가 가로로 넘치는 것을 막는다 — 자식마다 필요하다.
+        items-start: 없으면 셀이 stretch돼 짧은 쪽 카드가 세로로 늘어난다.
       */}
-      <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
-        {/* 우 레일: 스크롤해도 따라오는 점수·담기·지도 */}
-        <div className="order-1 min-w-0 space-y-6 lg:order-2 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
+      <div className="mt-6 grid gap-8 lg:grid-cols-2 lg:items-start">
+        {/* 대표사진 즉시, detailImage2 추가 사진은 스트리밍 */}
+        <div className="min-w-0">
+          <Suspense
+            fallback={
+              <PlaceGallery
+                title={place.title}
+                envType={place.envType}
+                images={place.imageUrl ? [place.imageUrl] : []}
+                ratio="half"
+              />
+            }
+          >
+            <GallerySection
+              contentId={contentId}
+              title={place.title}
+              envType={place.envType}
+              imageUrl={place.imageUrl}
+              ratio="half"
+            />
+          </Suspense>
+        </div>
+
+        <div className="min-w-0 space-y-6">
+          {/* AI 3줄 요약 — 사진 옆 첫 문장으로 "어떤 곳인지" 즉시 파악 */}
+          {summary && (
+            <div className="rounded-xl bg-sky-50/60 px-4 py-3 ring-1 ring-sky-100">
+              <p className="text-xs font-bold text-sky-700">
+                ⚡ 핵심 3줄
+                <span className="ml-1.5 font-medium text-sky-400">AI 요약</span>
+              </p>
+              <ul className="mt-1 space-y-0.5 text-sm leading-relaxed text-slate-700">
+                {summary.map((line) => (
+                  <li key={line}>· {line}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* 소개 — TourAPI detailCommon2 실시간 조회 (스트리밍, 없으면 숨김) */}
+          <Suspense fallback={null}>
+            <OverviewSection contentId={contentId} fallback={place.overview} />
+          </Suspense>
+
+          {/* 위치 지도 */}
+          <section>
+            <h2 className="text-lg font-bold text-slate-900">위치 보기</h2>
+            {/* 마커가 하나뿐이면 범례가 설명할 게 없다 — 대체지가 있을 때만 */}
+            {alternatives.length > 0 && (
+              <p className="mt-1 text-sm text-slate-500">
+                <span className="font-semibold text-teal-800">●</span> 현재
+                관광지 · <span className="font-semibold text-emerald-500">●</span>{" "}
+                더 안전한 대체지
+              </p>
+            )}
+            <div className="mt-3">
+              <PlaceMap
+                target={{
+                  contentId: place.contentId,
+                  title: place.title,
+                  lat: place.lat,
+                  lng: place.lng,
+                  score: safety.score,
+                }}
+                alternatives={alternatives.map((alt) => ({
+                  contentId: alt.contentId,
+                  title: alt.title,
+                  lat: alt.lat,
+                  lng: alt.lng,
+                  score: alt.safety.score,
+                  distanceKm: alt.distanceKm,
+                }))}
+                profileQuery={buildQuery({
+                  profile: profileParam(profile),
+                  date: activeDate,
+                  end: activeEnd,
+                })}
+              />
+            </div>
+          </section>
+        </div>
+      </div>
+
+      {/*
+        하단 — 좌: 점수와 그 근거 / 우: 남들의 경험(후기)과 동행 조건(반려동물·아이).
+        상단과 한 그리드로 묶지 않는 이유: 근거 카드는 요인 수(5~10개)에 따라 높이가
+        배로 달라져, 행이 정렬되면 상단 오른쪽에 200px 넘는 빈칸이 생긴다.
+      */}
+      <div className="mt-8 grid gap-8 lg:grid-cols-2 lg:items-start">
+        <div className="min-w-0 space-y-6">
+          <div>
+            <p className="mb-2 text-sm font-semibold text-slate-600">
+              동행에 따라 점수가 달라져요 —{" "}
+              <strong className="text-teal-700">
+                {PROFILE_LABEL[profile]} 기준
+              </strong>
+            </p>
+            <ProfileChips
+              basePath={`/places/${place.contentId}`}
+              current={profile}
+              extraParams={{ date: activeDate, end: activeEnd }}
+            />
+          </div>
+
           <div>
             {dateSafety?.seasonal ? (
               /* 계절 모드: 개별 날짜 예보가 없어 단일 점수를 단정하지 않고 범위로 안내 */
@@ -228,9 +346,10 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
                     />
                   </div>
                 </div>
+                {/* "30년 기후"는 첫 줄에 이미 있으므로 여기선 범위의 의미만 설명한다 */}
                 <p className="mt-2 text-xs leading-relaxed text-slate-400">
-                  먼 날짜는 날씨를 예보할 수 없어요. 이 시기 30년 기후에서
-                  평범한 날과 궂은 날(상위 10%)의 점수 범위입니다.
+                  먼 날짜는 날씨를 예보할 수 없어, 평범한 날과 궂은 날(상위
+                  10%)의 점수 범위로 안내해요.
                 </p>
               </div>
             ) : (
@@ -272,6 +391,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
                 현재값 기준입니다.
               </p>
             )}
+            {/* 어느 날짜 기준인지는 위 배지 라벨(또는 계절 카드 첫 줄)이 이미 말한다 */}
             {/* 기간 일자별 점수 — 셀 클릭 시 그날 단일 날짜로 드릴다운 */}
             {rangeSafety && (
               <div className="mt-3">
@@ -284,123 +404,23 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
             )}
           </div>
 
-          <div>
-            <div className="flex flex-wrap gap-2">
-              <AddToPlanButton
-                item={{
-                  contentId: place.contentId,
-                  title: place.title,
-                  lat: place.lat,
-                  lng: place.lng,
-                  score: safety.score,
-                }}
-                contentTypeId={place.contentTypeId}
-              />
-              <Link
-                href={`/places/${place.contentId}/report${buildQuery({ profile: profileParam(profile) })}`}
-                className="inline-flex items-center gap-1.5 rounded-full bg-teal-50 px-4 py-1.5 text-sm font-semibold text-teal-700 ring-1 ring-teal-200 transition-colors hover:bg-teal-100"
-              >
-                <span aria-hidden="true">📋</span> 출발 전 체크 리포트
-              </Link>
-              <a
-                href={`https://search.naver.com/search.naver?query=${encodeURIComponent(place.title)}`}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-1.5 text-sm font-semibold text-slate-600 ring-1 ring-slate-200 transition-colors hover:bg-slate-100"
-              >
-                <span aria-hidden="true">🔍</span> 네이버에서 자세히 보기
-              </a>
-              <a
-                href={`https://map.kakao.com/link/to/${encodeURIComponent(place.title)},${place.lat},${place.lng}`}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-1.5 text-sm font-semibold text-slate-600 ring-1 ring-slate-200 transition-colors hover:bg-slate-100"
-              >
-                <span aria-hidden="true">🧭</span> 길찾기 (실제 소요시간)
-              </a>
-            </div>
-            {/* 날짜는 홈에서 정한 여행 날짜 기준 (여기선 표시만) */}
-            {activeDate && (
-              <p className="mt-3 text-xs font-semibold text-sky-700">
-                {formatKoreanDate(activeDate)}
-                {activeEnd ? ` ~ ${formatKoreanDate(activeEnd)}` : ""} 여행
-                기준 점수예요
-              </p>
-            )}
-          </div>
-
-          <div>
-            <p className="mb-2 text-sm font-semibold text-slate-600">
-              동행에 따라 점수가 달라져요 —{" "}
-              <strong className="text-teal-700">
-                {PROFILE_LABEL[profile]} 기준
-              </strong>
-            </p>
-            <ProfileChips
-              basePath={`/places/${place.contentId}`}
-              current={profile}
-              extraParams={{ date: activeDate, end: activeEnd }}
-            />
-          </div>
-
-          {/* 위치 지도 */}
+          {/* 요인별 상세 — 계절 모드는 궂은날 시나리오 기준 (무엇을 주의할지) */}
           <section>
-            <h2 className="text-lg font-bold text-slate-900">위치 보기</h2>
-            <p className="mb-3 mt-1 text-sm text-slate-500">
-              <span className="font-semibold text-teal-800">●</span> 현재 관광지
-              {alternatives.length > 0 && (
-                <>
-                  {" · "}
-                  <span className="font-semibold text-emerald-500">●</span> 더
-                  안전한 대체지
-                </>
-              )}
-            </p>
-            <PlaceMap
-              target={{
-                contentId: place.contentId,
-                title: place.title,
-                lat: place.lat,
-                lng: place.lng,
-                score: safety.score,
-              }}
-              alternatives={alternatives.map((alt) => ({
-                contentId: alt.contentId,
-                title: alt.title,
-                lat: alt.lat,
-                lng: alt.lng,
-                score: alt.safety.score,
-                distanceKm: alt.distanceKm,
-              }))}
-              profileQuery={buildQuery({
-                profile: profileParam(profile),
-                date: activeDate,
-                end: activeEnd,
-              })}
-            />
+            <h2 className="text-lg font-bold text-slate-900">
+              {dateSafety?.seasonal
+                ? "궂은날엔 이런 점을 주의하세요"
+                : "왜 이 점수인가요?"}
+            </h2>
+            <div className="mt-3">
+              <RiskBreakdownBar factors={analysisSafety.factors} />
+            </div>
           </section>
         </div>
 
-        {/* 좌 본문: 어떤 곳인가 → 왜 이 점수인가 → 그래서 어디로 */}
-        <div className="order-2 min-w-0 space-y-8 lg:order-1">
-          {/* AI 3줄 요약 — 읽는 컬럼의 첫 문장으로 "어떤 곳인지" 즉시 파악 */}
-          {summary && (
-            <div className="rounded-xl bg-sky-50/60 px-4 py-3 ring-1 ring-sky-100">
-              <p className="text-xs font-bold text-sky-700">
-                ⚡ 핵심 3줄
-                <span className="ml-1.5 font-medium text-sky-400">AI 요약</span>
-              </p>
-              <ul className="mt-1 space-y-0.5 text-sm leading-relaxed text-slate-700">
-                {summary.map((line) => (
-                  <li key={line}>· {line}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* 소개 — TourAPI detailCommon2 실시간 조회 (스트리밍, 없으면 숨김) */}
+        <div className="min-w-0 space-y-8">
+          {/* 방문 후기 (스트리밍, 후기 없으면 섹션 숨김) */}
           <Suspense fallback={null}>
-            <OverviewSection contentId={contentId} fallback={place.overview} />
+            <ReviewsSection title={place.title} />
           </Suspense>
 
           {/* 반려동물 동반 정보 — detailPetTour2 실시간 (없으면 숨김) */}
@@ -440,100 +460,74 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
               </div>
             </section>
           )}
-
-          {/* 요인별 상세 — 계절 모드는 궂은날 시나리오 기준 (무엇을 주의할지) */}
-          <section>
-            <h2 className="text-lg font-bold text-slate-900">
-              {dateSafety?.seasonal
-                ? "궂은날엔 이런 점을 주의하세요"
-                : "왜 이 점수인가요?"}
-            </h2>
-            <div className="mt-3">
-              <RiskBreakdownBar factors={analysisSafety.factors} />
-            </div>
-          </section>
         </div>
       </div>
 
       {/*
-        아래 세 섹션은 카드가 넓어야 읽히고 세로도 길다. 좁은 본문 컬럼에 직렬로
-        쌓으면 페이지만 길어지므로 전폭으로 빼서 가로를 쓴다 — 대체지는 한 줄
-        4장, 코스와 후기는 나란히. (원래 2단 레이아웃이 짧았던 건 콘텐츠가
-        병렬로 흘렀기 때문이고, 그 장점만 여기서 되살린다.)
+        "그래서 어디로" — 코스와 대체지는 카드가 넓어야 읽히고 세로도 길어(각 ~450px)
+        나란히 두면 낭비 없이 절반이 된다. 대체지는 절반 폭이므로 한 줄 2장.
       */}
-      <div className="mt-8 space-y-8">
-        {/* 안전한 대체지 추천 */}
-        <section>
-            <h2 className="text-lg font-bold text-slate-900">안전한 대체지 추천</h2>
+      <div className="mt-8 grid gap-8 lg:grid-cols-2 lg:items-start">
+        {/* 추천 반나절 코스 */}
+        {course && (
+          <section className="min-w-0">
+            <h2 className="text-lg font-bold text-slate-900">추천 반나절 코스</h2>
             <p className="mt-1 text-sm text-slate-500">
-              같은 유형의 더 안전한 주변 관광지예요 — {transport === "car" ? `자차 기준 ${CAR_DISTANCE_KM}km` : "대중교통 기준 30km"} 이내 (직선거리)
+              {course.anchoredOnAlternative
+                ? `오늘은 ${place.title} 대신 더 안전한 코스를 추천해요`
+                : `${place.title}에서 시작하는 안전 코스예요`}
             </p>
-            {alternatives.length === 0 ? (
-              <div className="mt-3 rounded-2xl bg-teal-50/50 px-6 py-10 text-center ring-1 ring-teal-100">
-                <p className="text-3xl" aria-hidden="true">
-                  🧭
-                </p>
-                <p className="mt-3 font-bold text-slate-700">
-                  이 관광지는 주변 대비 이미 주의 요인이 낮은 편이에요
-                </p>
-                <p className="mt-1 text-sm text-slate-500">
-                  30km 이내에서 안전 점수가 의미 있게 더 높은 관광지를 찾지
-                  못했어요.
-                </p>
-                <Link
-                  href={`/places${buildQuery({ profile: profileParam(profile) })}`}
-                  className="mt-4 inline-block rounded-full bg-teal-50 px-4 py-1.5 text-sm font-semibold text-teal-700 ring-1 ring-teal-200 transition-colors hover:bg-teal-100"
-                >
-                  다른 관광지 둘러보기
-                </Link>
-              </div>
-            ) : (
-              <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {alternatives.map((alt) => (
-                  <PlaceCard
-                    key={alt.contentId}
-                    place={alt}
-                    profile={profile}
-                    date={activeDate}
-                    end={activeEnd}
-                    footer={
-                      <p className="text-xs font-semibold text-teal-700">
-                        {alt.distanceKm.toFixed(1)}km · 안전점수 +
-                        {alt.safety.score - safety.score}점
-                      </p>
-                    }
-                  />
-                ))}
-              </div>
-            )}
-        </section>
+            <CourseTimeline course={course} profile={profile} />
+          </section>
+        )}
 
-        {/* 코스와 후기는 세로가 비슷해(각 ~430px) 나란히 두면 낭비 없이 절반이 된다 */}
-        <div className="grid gap-8 lg:grid-cols-2 lg:items-start">
-          {/* 추천 반나절 코스 */}
-          {course && (
-            <section>
-              <h2 className="text-lg font-bold text-slate-900">추천 반나절 코스</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                {course.anchoredOnAlternative
-                  ? `오늘은 ${place.title} 대신 더 안전한 코스를 추천해요`
-                  : `${place.title}에서 시작하는 안전 코스예요`}
+        {/* 안전한 대체지 추천 */}
+        <section className="min-w-0">
+          <h2 className="text-lg font-bold text-slate-900">안전한 대체지 추천</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            같은 유형의 더 안전한 주변 관광지예요 — {transport === "car" ? `자차 기준 ${CAR_DISTANCE_KM}km` : "대중교통 기준 30km"} 이내 (직선거리)
+          </p>
+          {alternatives.length === 0 ? (
+            <div className="mt-3 rounded-2xl bg-teal-50/50 px-6 py-10 text-center ring-1 ring-teal-100">
+              <p className="text-3xl" aria-hidden="true">
+                🧭
               </p>
-              <CourseTimeline course={course} profile={profile} />
-            </section>
+              <p className="mt-3 font-bold text-slate-700">
+                이 관광지는 주변 대비 이미 주의 요인이 낮은 편이에요
+              </p>
+              <p className="mt-1 text-sm text-slate-500">
+                30km 이내에서 안전 점수가 의미 있게 더 높은 관광지를 찾지
+                못했어요.
+              </p>
+              <Link
+                href={`/places${buildQuery({ profile: profileParam(profile) })}`}
+                className="mt-4 inline-block rounded-full bg-teal-50 px-4 py-1.5 text-sm font-semibold text-teal-700 ring-1 ring-teal-200 transition-colors hover:bg-teal-100"
+              >
+                다른 관광지 둘러보기
+              </Link>
+            </div>
+          ) : (
+            <div className="mt-3 grid gap-4 sm:grid-cols-2">
+              {alternatives.map((alt) => (
+                <PlaceCard
+                  key={alt.contentId}
+                  place={alt}
+                  profile={profile}
+                  date={activeDate}
+                  end={activeEnd}
+                  footer={
+                    <p className="text-xs font-semibold text-teal-700">
+                      {alt.distanceKm.toFixed(1)}km · 안전점수 +
+                      {alt.safety.score - safety.score}점
+                    </p>
+                  }
+                />
+              ))}
+            </div>
           )}
-
-          {/* 방문 후기 (스트리밍, 후기 없으면 섹션 숨김) */}
-          <Suspense fallback={null}>
-            <ReviewsSection title={place.title} />
-          </Suspense>
-        </div>
+        </section>
       </div>
-
-      <p className="mt-8 text-xs leading-relaxed text-slate-400">
-        본 점수는 공공데이터 기반 참고 정보이며 안전을 보장하지 않습니다. 방문
-        전 기상특보와 현지 안내를 확인하세요.
-      </p>
+      {/* 면책 문구는 전역 푸터(layout.tsx)에 있다 — 여기 두면 바로 위아래로 두 번 나온다 */}
     </div>
   );
 }
