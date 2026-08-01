@@ -25,6 +25,7 @@ import {
 import { haversineKm } from "@/lib/reco/distance";
 import { formatKoreanDate, todayISOSeoul } from "@/lib/date";
 import { diagnosePlan } from "@/lib/plan/diagnose-action";
+import { MAX_STOPS } from "@/lib/plan/diagnose";
 import { encodePlanQuery } from "@/lib/plan/report-params";
 import {
   planSignature,
@@ -82,8 +83,14 @@ export default function TravelPlannerPanel({
     const onDocOver = (e: DragEvent) => e.preventDefault();
     const onDocDrop = (e: DragEvent) => {
       e.preventDefault();
-      if (asideRef.current?.contains(e.target as Node)) return;
-      remove(dragId);
+      if (!asideRef.current?.contains(e.target as Node)) remove(dragId);
+      // 드래그 상태를 여기서 반드시 끝낸다. 항목이 빠지면 그 <li>가 언마운트되어
+      // onDragEnd가 영영 오지 않고, dragId가 남으면 이 문서 전역 리스너가 계속 붙어
+      // 관계없는 드래그(주소창·검색창 텍스트 등)를 preventDefault로 가로채며,
+      // 다음 바깥 드롭이 이미 지운 항목의 id로 엉뚱한 항목을 지운다.
+      setDragId(null);
+      setDragOverSlot(null);
+      setDropActive(false);
     };
     document.addEventListener("dragover", onDocOver);
     document.addEventListener("drop", onDocDrop);
@@ -94,9 +101,14 @@ export default function TravelPlannerPanel({
   }, [dragId, remove]);
 
   // 계획 저장 — 인라인 이름 입력 → useSavedPlans에 스냅샷 기록
-  const { save } = useSavedPlans();
+  const { save, list: savedList } = useSavedPlans();
   const [saving, setSaving] = useState(false);
   const [saveName, setSaveName] = useState("");
+  // 계획이 비면 저장 폼 상태도 끝낸다. "비우기" 버튼만 setSaving(false)를 하고 있어서,
+  // 항목 ✕·패널 밖 드롭으로 비운 경우엔 saving이 남았다 — 폼은 count>0 조건으로 숨겨질 뿐이라
+  // 아무거나 다시 담는 순간 옛 이름을 안은 폼이 스스로 열리고 포커스까지 가져갔다.
+  // (렌더 중 조정 — 이펙트로 setState 하는 것보다 권장되는 패턴이고 한 번 더 렌더하고 수렴한다)
+  if (saving && count === 0) setSaving(false);
   const [savedFlash, setSavedFlash] = useState<"ok" | "fail" | null>(null);
   // 연속 저장 시 이전 2초 타이머가 새 표시(특히 실패)를 조기에 지우지 않도록 정리
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -105,13 +117,22 @@ export default function TravelPlannerPanel({
       if (flashTimer.current) clearTimeout(flashTimer.current);
     };
   }, []);
-  const defaultName = plan.from ? `${formatKoreanDate(plan.from)} 여행` : "내 여행 계획";
+  // 불러와서 수정 중이면 원래 이름을 그대로 제안한다 — 날짜 기반 새 이름을 채우면
+  // 사용자가 확정만 해도 이름이 바뀌어 목록에서 같은 계획을 알아볼 수 없다
+  const origin = plan.savedId
+    ? savedList.find((p) => p.id === plan.savedId)
+    : undefined;
+  const defaultName =
+    origin?.name ??
+    (plan.from ? `${formatKoreanDate(plan.from)} 여행` : "내 여행 계획");
   const confirmSave = () => {
     if (plan.items.length === 0) return; // 비운 직후 잔류 폼에서 빈 계획 저장 방지
     // 저장 실패(쿼터·차단)를 성공으로 표시하지 않는다 — 무통보 데이터 손실 방지
-    const ok = save(saveName.trim() || defaultName, plan);
+    const savedId = save(saveName.trim() || defaultName, plan);
+    // 새로 저장한 계획에도 id를 새겨, 이어서 고치고 다시 저장하면 갱신이 되게 한다
+    if (savedId && plan.savedId !== savedId) replace({ ...plan, savedId });
     setSaving(false);
-    setSavedFlash(ok ? "ok" : "fail");
+    setSavedFlash(savedId ? "ok" : "fail");
     if (flashTimer.current) clearTimeout(flashTimer.current);
     flashTimer.current = setTimeout(() => setSavedFlash(null), 2000);
   };
@@ -121,10 +142,13 @@ export default function TravelPlannerPanel({
   const [diagSig, setDiagSig] = useState("");
   const [diagLoading, setDiagLoading] = useState(false);
   const [diagError, setDiagError] = useState(false);
+  // 서버가 거절하는 크기는 미리 안다 — "잠시 후 다시 시도"는 절대 성공하지 않는 안내가 된다
+  const tooManyStops = count > MAX_STOPS;
 
   async function runDiagnosis(target?: TravelPlan) {
     const p = target ?? plan;
     if (p.items.length === 0 || diagLoading) return;
+    if (p.items.length > MAX_STOPS) return; // 버튼이 비활성이지만 코스 담기 경로도 막는다
     setDiagLoading(true);
     setDiagError(false);
     try {
@@ -370,15 +394,22 @@ export default function TravelPlannerPanel({
           <button
             type="button"
             onClick={() => void runDiagnosis()}
-            disabled={diagLoading}
+            disabled={diagLoading || tooManyStops}
             className="w-full rounded-xl bg-white px-3 py-2 text-sm font-bold text-teal-700 ring-1 ring-teal-600/40 transition-colors hover:bg-teal-50 disabled:opacity-60"
           >
             {diagLoading ? "진단 중…" : "🩺 계획 안전 진단"}
           </button>
-          {diagError && (
-            <p className="mt-1.5 text-xs font-semibold text-red-500">
-              진단에 실패했어요. 잠시 후 다시 시도해 주세요.
+          {tooManyStops ? (
+            <p className="mt-1.5 text-xs font-semibold text-amber-600">
+              스톱이 {MAX_STOPS}곳을 넘어 진단할 수 없어요 (현재 {count}곳). 리포트도 앞{" "}
+              {MAX_STOPS}곳만 나옵니다 — 일부를 빼주세요
             </p>
+          ) : (
+            diagError && (
+              <p className="mt-1.5 text-xs font-semibold text-red-500">
+                진단에 실패했어요. 잠시 후 다시 시도해 주세요.
+              </p>
+            )
           )}
           {diag && diagStale && !diagLoading && (
             <p className="mt-1.5 text-xs font-semibold text-amber-600">
@@ -394,10 +425,15 @@ export default function TravelPlannerPanel({
               {diag.riskyCount > 0
                 ? `⚠️ 주의 스톱 ${diag.riskyCount}곳 — 교체 후보를 확인해 보세요`
                 : "✓ 전 스톱 방문 주의 요인 낮음"}
+              {/* assumedToday는 "미설정"과 "지난 날짜"를 한 값으로 뭉친다 — 출발일이
+                  설정·표시돼 있는데 "미설정"이라 말하면 바로 위 날짜 라벨과 모순된다 */}
               {diag.assumedToday && (
                 <span className="font-normal text-slate-400">
                   {" "}
-                  · 출발일 미설정, 오늘 출발 기준
+                  ·{" "}
+                  {plan.from
+                    ? "출발일이 지나 오늘 기준으로 계산"
+                    : "출발일 미설정, 오늘 출발 기준"}
                 </span>
               )}
             </p>
@@ -414,7 +450,16 @@ export default function TravelPlannerPanel({
               type="button"
               onClick={() => setActiveDay(d)}
               onDragOver={(e) => {
-                if (e.dataTransfer.types.includes(PLAN_DRAG_TYPE)) e.preventDefault();
+                // 목록 카드(PLAN_DRAG_TYPE)뿐 아니라 패널 내부 항목 드래그(dragId)도 받는다.
+                // 내부 드래그는 text/plain만 싣기 때문에 타입 검사만 하면 여기서 걸러지는데,
+                // 정작 문서 전역 dragover가 preventDefault를 걸어 커서는 "놓을 수 있음"으로
+                // 바뀌었다 — 놓을 수 있다고 해놓고 아무 일도 안 하던 원인.
+                if (
+                  dragId !== null ||
+                  e.dataTransfer.types.includes(PLAN_DRAG_TYPE)
+                ) {
+                  e.preventDefault();
+                }
               }}
               onDrop={(e) => {
                 // 다른 일차 탭 위로 카드를 떨어뜨리면 그 일차로 담김 (이미 담긴 카드는 이동)
@@ -423,6 +468,16 @@ export default function TravelPlannerPanel({
                   e.preventDefault();
                   addPayload(payload, d);
                   setActiveDay(d);
+                  return;
+                }
+                // 패널 내부 항목을 끌어온 경우 — 그 일차로 옮긴다
+                if (dragId !== null) {
+                  e.preventDefault();
+                  e.stopPropagation(); // 문서 드롭 핸들러가 "패널 밖 = 빼기"로 오인하지 않게
+                  moveToDay(dragId, d);
+                  setActiveDay(d);
+                  setDragId(null);
+                  setDragOverSlot(null);
                 }
               }}
               className={`shrink-0 rounded-full px-3 py-1 text-xs font-bold transition-colors ${
@@ -575,7 +630,10 @@ export default function TravelPlannerPanel({
                         moveToSlot(dragId, it.slot);
                       }
                     }
+                    // 슬롯을 넘어 옮기면 이 <li>가 다른 슬롯 섹션으로 재마운트되어
+                    // onDragEnd가 오지 않는다 — 하이라이트를 여기서 직접 끈다
                     setDragId(null);
+                    setDragOverSlot(null);
                   }}
                   className={`rounded-lg bg-slate-50 px-2.5 py-2 ring-1 ${
                     risky ? "ring-amber-300" : "ring-slate-100"

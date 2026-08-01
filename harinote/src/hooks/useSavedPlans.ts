@@ -4,6 +4,7 @@ import { useCallback, useSyncExternalStore } from "react";
 import {
   isValidSavedPlanList,
   removeSavedPlan,
+  savedEntryFor,
   upsertSavedPlan,
   type SavedPlan,
 } from "@/lib/saved-plans";
@@ -84,15 +85,10 @@ export function useSavedPlans() {
     () => false,
   );
 
-  const save = useCallback((name: string, plan: TravelPlan): boolean => {
-    return write(
-      upsertSavedPlan(readList(), {
-        id: newId(),
-        name,
-        savedAt: new Date().toISOString(),
-        plan,
-      }),
-    );
+  /** 저장 성공 시 항목 id, 실패 시 null — 호출부가 그 id를 계획에 새겨 다음 저장이 갱신이 되게 한다 */
+  const save = useCallback((name: string, plan: TravelPlan): string | null => {
+    const entry = savedEntryFor(plan, name, new Date().toISOString(), newId);
+    return write(upsertSavedPlan(readList(), entry)) ? entry.id : null;
   }, []);
   const remove = useCallback(
     (id: string) => write(removeSavedPlan(readList(), id)),

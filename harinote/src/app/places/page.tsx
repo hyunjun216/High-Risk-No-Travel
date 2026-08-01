@@ -2,15 +2,23 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import {
+  getPlaces,
   getPlacesWithSafety,
   getPlacesWithSafetyOnDate,
   getPlacesWithSafetyOnRange,
   matchesPlaceQuery,
   type PlaceWithSafety,
 } from "@/lib/datasource";
+import { getLodgings } from "@/lib/tour/lodging";
+import {
+  searchLodgings,
+  searchPlaces,
+  suggestLodgingQuery,
+  suggestPlaceQuery,
+} from "@/lib/search/places";
 import type { Profile } from "@/lib/safety/types";
 import type { PlanDragPayload } from "@/lib/travel-plan";
-import { dayOffsetSeoul, formatKoreanDate } from "@/lib/date";
+import { dayOffsetSeoul, formatKoreanDate, todayISOSeoul } from "@/lib/date";
 import {
   CAT3_CAFE_LABEL,
   CONTENT_TYPE_LABEL,
@@ -22,7 +30,12 @@ import PopularSidebar from "@/components/PopularSidebar";
 import TravelPlannerPanel from "@/components/TravelPlannerPanel";
 import PlannerDrawer from "@/components/PlannerDrawer";
 import PrefsPersist from "@/components/PrefsPersist";
-import { savedTransport } from "@/lib/prefs";
+import {
+  savedDate,
+  savedEnd,
+  savedProfile,
+  savedTransport,
+} from "@/lib/prefs";
 import SearchBox from "@/components/SearchBox";
 import TravelFilterPanel from "@/components/TravelFilterPanel";
 import {
@@ -53,7 +66,7 @@ import { isPetFriendly } from "@/lib/tour/pet-friendly";
 const PAGE_SIZE = 24;
 
 export const metadata: Metadata = {
-  title: "관광지 검색",
+  title: "여행 계획",
 };
 
 const TYPE_TABS: { label: string; value?: PlaceTypeParam }[] = [
@@ -62,11 +75,32 @@ const TYPE_TABS: { label: string; value?: PlaceTypeParam }[] = [
     label: CONTENT_TYPE_LABEL[id],
     value: id as PlaceTypeParam,
   })),
-  // 카페는 음식점(39)의 소분류(cat3) 서브셋 — 음식점 탭에도 포함된 채 별도 탭 제공
+  // 카페는 음식점(39) 소분류지만 별도 탭 — 음식점 탭에서는 제외해 완전히 분리한다
+  // (placeTypeToQuery: 39 → excludeCat3, "cafe" → cat3)
   { label: CAT3_CAFE_LABEL, value: "cafe" },
-  // 숙박은 별도 내장 데이터셋(lodging.gangwon.json) — 전체 탭에는 포함되지 않는다
+  // 숙박은 별도 내장 데이터셋(lodging.gangwon.json) — 전체 탭에도 함께 노출된다
   { label: CONTENT_TYPE_LABEL[32], value: "lodging" },
 ];
+
+/**
+ * 탭 라벨 옆 건수 — 유형을 고르기 전에 규모를 알 수 있게 한다(문화시설 109곳 등).
+ * 시군·날짜·검색 필터는 반영하지 않는 데이터 원본 건수다. 실시간 건수는 전량 점수
+ * 조회를 기다려야 해서 셸 즉시 렌더(아래 Suspense 주석)를 깨뜨린다.
+ * 결과 목록과 같은 술어(matchesPlaceQuery)로 세므로 탭 정의와 어긋날 수 없다.
+ * 다만 숙박은 점수를 못 만든 곳이 목록에서 빠질 수 있어 실제보다 클 수 있다.
+ */
+async function typeTabCounts(): Promise<Map<PlaceTypeParam | undefined, number>> {
+  const pool = [...(await getPlaces()), ...getLodgings()];
+  return new Map(
+    TYPE_TABS.map((tab) => [
+      tab.value,
+      tab.value === undefined
+        ? pool.length
+        : pool.filter((p) => matchesPlaceQuery(p, placeTypeToQuery(tab.value)))
+            .length,
+    ]),
+  );
+}
 
 interface Props {
   searchParams: Promise<Record<string, SearchParamValue>>;
@@ -81,7 +115,7 @@ function planItemOf(place: PlaceWithSafety): PlanDragPayload {
     lng: place.lng,
     score: place.safety.score,
     contentTypeId: place.contentTypeId,
-    // 숙박은 계획 패널·리포트가 kind로 분기 (상세 링크 없음, 숙소 슬롯 표시)
+    // 숙박은 계획 패널·리포트가 kind로 분기 (숙소 슬롯 표시)
     ...(place.contentTypeId === 32 ? { kind: "lodging" as const } : {}),
   };
 }
@@ -90,7 +124,11 @@ export default async function PlacesPage({ searchParams }: Props) {
   const sp = await searchParams;
   const q = first(sp.q)?.trim() ?? "";
   const placeType = parsePlaceType(sp.type);
-  const profile = parseProfile(sp.profile);
+  // URL 파라미터 우선, 없으면 쿠키에 기억된 조건 (홈·상세와 동일 규칙)
+  const profile =
+    sp.profile !== undefined
+      ? parseProfile(sp.profile)
+      : ((await savedProfile()) ?? "default");
   const sigunguCodes = parseSigunguList(sp.sigungu);
   const sigunguLabel =
     sigunguCodes.length > 0 ? sigunguSummaryLabel(sigunguCodes) : undefined;
@@ -99,7 +137,17 @@ export default async function PlacesPage({ searchParams }: Props) {
 
   // 날짜·기간 모드 (홈 날짜 스테퍼에서 전달, 기간은 URL 직접 지정)
   // 단일: 그날 기준 점수 / 기간: 기간 중 최악일 대표점수로 목록 구성
-  const { start: date, end } = parseDateRange(sp.date, sp.end);
+  // URL 파라미터 우선, 없으면 기억된 날짜 — 헤더 검색·탭 이동처럼 date가 빠지는
+  // 경로에서도 고른 날짜가 유지된다. 해제는 날짜 해제 칩(명시적으로 오늘을 실어 보냄).
+  //
+  // 날짜와 기간은 반드시 **한 출처**에서 가져온다. 섞으면 `?date=`만 있는 단일 날짜 요청에
+  // 남아 있던 hari_end가 붙어, 사용자가 요청하지 않은 기간 모드(기간 중 최악일 대표점수)로
+  // 목록 전체가 계산된다.
+  const dateFromUrl = sp.date !== undefined;
+  const { start: date, end } = parseDateRange(
+    dateFromUrl ? sp.date : await savedDate(),
+    dateFromUrl ? sp.end : await savedEnd(),
+  );
   // 반려동물 동반 필터 (TourAPI detailPetTour2 수집분)
   const pet = parsePet(sp.pet);
   const petParam = pet ? "1" : undefined;
@@ -107,7 +155,9 @@ export default async function PlacesPage({ searchParams }: Props) {
   const transport =
     parseTransport(sp.tr) ?? (await savedTransport()) ?? "transit";
   const page = parsePage(sp.page);
-  const sort = parseSort(sp.sort);
+  const sort = parseSort(sp.sort, !!q);
+  // 탭 건수는 원본 데이터 로드만 필요 — 전량 점수 계산(결과 영역)과 달리 셸을 붙잡지 않는다
+  const tabCounts = await typeTabCounts();
 
   // 링크들이 공유하는 현재 조건 — 각 링크는 바꿀 파라미터만 덮어쓴다
   const currentParams = {
@@ -119,7 +169,7 @@ export default async function PlacesPage({ searchParams }: Props) {
     end,
     pet: petParam,
     tr: transport === "transit" ? undefined : transport,
-    sort: sortParam(sort),
+    sort: sortParam(sort, !!q),
   };
 
   // 결과 영역만 Suspense로 격리 — 같은 세그먼트 내 searchParams 전환은 loading.tsx가
@@ -146,15 +196,25 @@ export default async function PlacesPage({ searchParams }: Props) {
       </div>
 
       <div className="order-1 lg:order-2">
-        {/* 모바일 검색 (md+는 네비바 전역 검색 사용) */}
-        <div className="max-w-2xl md:hidden">
+        {/* 화면 목적 — 탭 라벨(4자)이 못 담는 "찾아서 담는 곳"을 여기서 설명 */}
+        <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
+          여행 계획 세우기
+        </h1>
+        <p className="mt-2 mb-5 text-sm text-slate-500 sm:text-base">
+          갈 곳을 찾아 안전 점수를 확인하고, 일정표에 담아 하루를 완성하세요.
+        </p>
+
+        {/* 이 화면의 검색창 — 전 폭에서 노출한다. 헤더 전역 검색은 여행 조건을 실을 수
+            없어 /places에서는 감춰지므로(HeaderSearch), 여기가 유일한 검색 입구다. */}
+        <div className="max-w-2xl">
           <SearchBox
             defaultQuery={q}
             profile={profile}
             date={date}
             end={end}
             sigungu={sigunguParam(sigunguCodes)}
-            compact
+            placeType={placeType}
+            pet={petParam}
           />
         </div>
 
@@ -171,31 +231,48 @@ export default async function PlacesPage({ searchParams }: Props) {
 
         {/* 콘텐츠 종류 탭 — 코스를 짜며 자주 바꾸는 필터라 여행 조건 아래 배치 */}
         <nav
-          aria-label="관광지 종류 필터"
+          aria-label="장소 종류 필터"
           className="flex flex-wrap gap-2 border-t border-slate-100 pt-3"
         >
           {TYPE_TABS.map((tab) => {
             const active = tab.value === placeType;
             const href = `/places${buildQuery({ ...currentParams, type: tab.value })}`;
+            const count = tabCounts.get(tab.value);
             return (
               <Link
                 key={tab.label}
                 href={href}
-                aria-current={active ? "true" : undefined}
-                className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
+                aria-current={active ? "page" : undefined}
+                className={`inline-flex items-baseline gap-1.5 rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
                   active
                     ? "bg-slate-900 text-white"
                     : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100"
                 }`}
               >
                 {tab.label}
+                {count !== undefined && (
+                  <span
+                    className={`text-[11px] font-bold tabular-nums ${
+                      active ? "text-white/60" : "text-slate-400"
+                    }`}
+                  >
+                    {count.toLocaleString("ko-KR")}
+                  </span>
+                )}
               </Link>
             );
           })}
         </nav>
       </div>
 
-      <PrefsPersist profile={profile} transport={transport} />
+      {/* 날짜를 명시한 진입(날짜 해제 칩·공유 링크)만 기억을 갱신한다 — 아래 주석의 규칙은
+          홈·상세와 동일하다 (undefined = 손대지 않음, null = 지움) */}
+      <PrefsPersist
+        profile={profile}
+        transport={transport}
+        date={sp.date !== undefined ? (date ?? null) : undefined}
+        end={sp.date !== undefined ? (end ?? null) : undefined}
+      />
 
       <Suspense key={resultsKey} fallback={<ResultsSkeleton />}>
         <PlacesResults
@@ -264,22 +341,43 @@ async function PlacesResults({
   // 기본 정렬 = 안전점수 높은 순 — "어디가 안전한가"가 서비스의 축이므로
   // 데이터 순서(사실상 가나다)가 아니라 점수가 목록의 기준이어야 한다.
   // 정확도순·인기순은 places-sort.ts. 전량 점수는 10분 메모리 캐시를 재사용해 부담 없음.
-  // 숙박 탭은 별도 내장 데이터셋 — 이후 필터·정렬·페이지네이션은 동일 경로를 탄다.
+  const tourPlaces = () =>
+    date
+      ? end
+        ? getPlacesWithSafetyOnRange(profile, date, end)
+        : getPlacesWithSafetyOnDate(profile, date)
+      : getPlacesWithSafety(undefined, profile);
+  // 숙박은 별도 내장 데이터셋 — 전체 탭에서는 관광지와 합쳐 한 목록으로 본다
+  // (계획을 세우는 화면이므로 잘 곳도 같은 목록에서 찾아야 한다). 유형 탭을 고르면
+  // 해당 데이터셋만 로드한다. 이후 필터·정렬·페이지네이션은 동일 경로를 탄다.
   const all =
     placeType === "lodging"
       ? await getLodgingsWithSafety(profile, date, end)
-      : date
-        ? end
-          ? await getPlacesWithSafetyOnRange(profile, date, end)
-          : await getPlacesWithSafetyOnDate(profile, date)
-        : await getPlacesWithSafety(undefined, profile);
+      : placeType === undefined
+        ? (
+            await Promise.all([
+              tourPlaces(),
+              getLodgingsWithSafety(profile, date, end),
+            ])
+          ).flat()
+        : await tourPlaces();
+  // 검색은 색인 전체를 한 번에 봐야 점수(IDF·랭킹)가 나오므로 항목별 술어로 만들 수 없다.
+  // 그래서 먼저 검색해 contentId→점수 맵을 얻고, 그 맵으로 거른 뒤 나머지 필터를 얹는다.
+  // 전체 탭은 두 색인의 결과를 합친다 — 색인이 달라 BM25 점수 척도가 완전히 같지는
+  // 않지만(정확도순에서 두 데이터셋이 섞인다), 숙소가 검색에서 아예 빠지는 것보다 낫다.
+  const relevance = q
+    ? new Map(
+        (placeType === "lodging"
+          ? searchLodgings(q)
+          : placeType === undefined
+            ? [...(await searchPlaces(q)), ...searchLodgings(q)]
+            : await searchPlaces(q)
+        ).map((h) => [h.contentId, h.score]),
+      )
+    : undefined;
   const filtered = all
-    .filter((p) =>
-      matchesPlaceQuery(p, {
-        q: q || undefined,
-        ...placeTypeToQuery(placeType),
-      }),
-    )
+    .filter((p) => !relevance || relevance.has(p.contentId))
+    .filter((p) => matchesPlaceQuery(p, placeTypeToQuery(placeType)))
     // 시군 복수선택 — PlaceQuery는 단일값 계약이라 pet/kids처럼 후필터
     .filter(
       (p) =>
@@ -287,7 +385,22 @@ async function PlacesResults({
         (p.sigunguCode !== undefined && sigunguCodes.includes(p.sigunguCode)),
     )
     .filter((p) => !pet || isPetFriendly(p.contentId));
-  const places = sortPlaces(filtered, sort, q);
+  const places = sortPlaces(filtered, sort, relevance);
+
+  // 오타 제안은 0건일 때만 — 항상 켜면 멀쩡한 검색어까지 멋대로 바꾼다 (suggest.ts)
+  // 전체 탭은 관광지 색인에서 못 찾으면 숙박 색인에도 물어본다 (목록과 같은 범위)
+  const suggestion =
+    q && places.length === 0
+      ? placeType === "lodging"
+        ? suggestLodgingQuery(q)
+        : placeType === undefined
+          ? ((await suggestPlaceQuery(q)) ?? suggestLodgingQuery(q))
+          : await suggestPlaceQuery(q)
+      : null;
+
+  // 목록 대상 명사 — 전체 탭은 숙박까지 포함하므로 "관광지"로 좁혀 말하지 않는다
+  const poolNoun =
+    placeType === undefined ? "여행지" : placeType === "lodging" ? "숙소" : "관광지";
 
   // 서버 사이드 페이지네이션 — 24건/페이지.
   const totalPages = Math.max(1, Math.ceil(places.length / PAGE_SIZE));
@@ -328,9 +441,9 @@ async function PlacesResults({
               검색 결과{" "}
             </>
           ) : sigunguLabel ? (
-            "관광지 "
+            `${poolNoun} `
           ) : (
-            "강원 관광지 "
+            `강원 ${poolNoun} `
           )}
           <strong className="text-teal-700">{places.length}곳</strong>
           {places.length > PAGE_SIZE && (
@@ -340,6 +453,28 @@ async function PlacesResults({
             </>
           )}
         </span>
+        {/* 날짜 해제 — 오늘을 명시해 보낸다. date를 생략하면 기억된 날짜가 폴백돼
+            해제가 되지 않는다 (TravelFilterPanel의 tr 명시 초기화와 같은 이유).
+            parseDate가 오늘을 거부하므로 결과는 오늘 모드이고, PrefsPersist가 기억도 지운다. */}
+        {date && (
+          <Link
+            href={`/places${buildQuery({ ...currentParams, date: todayISOSeoul(), end: undefined })}`}
+            className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-200"
+          >
+            날짜 해제 ✕
+          </Link>
+        )}
+        {/* 검색어 해제 — 헤더 검색창은 layout 소속이라 searchParams를 못 읽어 늘 빈칸이다.
+            이 링크가 없으면 검색어를 되돌릴 수단이 화면에서 사라진다 (라벨은 시군과 달리
+            길이가 무제한인 사용자 입력이라 본문에만 싣고 칩에는 반복하지 않는다). */}
+        {q && (
+          <Link
+            href={`/places${buildQuery({ ...currentParams, q: undefined })}`}
+            className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-200"
+          >
+            검색어 해제 ✕
+          </Link>
+        )}
         {sigunguLabel && (
           <Link
             href={`/places${buildQuery({ ...currentParams, sigungu: undefined })}`}
@@ -362,9 +497,22 @@ async function PlacesResults({
           <p className="mt-4 text-lg font-bold text-slate-800">
             검색 결과가 없어요
           </p>
-          <p className="mt-1.5 text-sm text-slate-500">
-            다른 검색어로 시도하거나, 아래 인기 관광지를 둘러보세요.
-          </p>
+          {suggestion ? (
+            <p className="mt-1.5 text-sm text-slate-500">
+              혹시{" "}
+              <Link
+                href={`/places${buildQuery({ ...currentParams, q: suggestion, page: undefined })}`}
+                className="font-bold text-teal-700 underline underline-offset-2 hover:text-teal-800"
+              >
+                {suggestion}
+              </Link>
+              을(를) 찾으셨나요?
+            </p>
+          ) : (
+            <p className="mt-1.5 text-sm text-slate-500">
+              다른 검색어로 시도하거나, 아래 인기 관광지를 둘러보세요.
+            </p>
+          )}
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             {["남이섬", "설악산", "경포"].map((name) => (
               <Link

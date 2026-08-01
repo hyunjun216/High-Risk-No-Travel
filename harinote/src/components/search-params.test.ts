@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildQuery,
   MAX_RANGE_DAYS,
   pageWindow,
+  parseDate,
   parseDateRange,
   parsePlaceType,
   parseSigunguList,
@@ -216,6 +218,21 @@ describe("parseSort / sortParam", () => {
     expect(sortParam("popularity")).toBe("popularity");
     expect(sortParam("relevance")).toBe("relevance");
   });
+
+  it("검색어가 있으면 기본값이 정확도순", () => {
+    expect(parseSort(undefined, true)).toBe("relevance");
+    expect(parseSort("", true)).toBe("relevance");
+  });
+
+  it("검색어가 있어도 명시한 정렬이 우선한다", () => {
+    expect(parseSort("safety", true)).toBe("safety");
+    expect(parseSort("popularity", true)).toBe("popularity");
+  });
+
+  it("검색 중에는 safety를 URL에 남겨야 기본값(정확도순)으로 되돌아가지 않는다", () => {
+    expect(sortParam("safety", true)).toBe("safety");
+    expect(sortParam("relevance", true)).toBeUndefined();
+  });
 });
 
 describe("pageWindow", () => {
@@ -245,5 +262,73 @@ describe("pageWindow", () => {
       expect(w).toContain(cur);
       expect(w.length).toBeLessThanOrEqual(10);
     }
+  });
+});
+
+// 날짜 기억(hari_date 쿠키)은 두 계약 위에 서 있다. 둘 중 하나라도 깨지면
+// 고른 날짜를 해제할 수 없거나(잠김) 지난 날짜가 되살아난다.
+describe("날짜 기억이 의존하는 parseDate 계약", () => {
+  const today = todayISOSeoul();
+
+  it("오늘은 거부된다 → 해제 칩이 오늘을 실어 보내면 오늘 모드가 된다", () => {
+    expect(parseDate(today)).toBeUndefined();
+  });
+
+  it("오늘을 명시하면 기간도 함께 풀린다 (start 없으면 end 무시)", () => {
+    expect(parseDateRange(today, addDaysISO(today, 3))).toEqual({});
+  });
+
+  it("지난 날짜는 거부된다 → 묵은 쿠키가 되살아나지 않는다", () => {
+    expect(parseDate(addDaysISO(today, -1))).toBeUndefined();
+    expect(parseDate(addDaysISO(today, -400))).toBeUndefined();
+  });
+
+  it("미래 날짜만 통과한다 → 기억할 값은 이것뿐", () => {
+    expect(parseDate(addDaysISO(today, 1))).toBe(addDaysISO(today, 1));
+    expect(parseDate(addDaysISO(today, 366))).toBe(addDaysISO(today, 366));
+    expect(parseDate(addDaysISO(today, 367))).toBeUndefined();
+  });
+
+  it("쿠키에서 온 쓰레기값도 같은 관문에서 걸린다", () => {
+    for (const junk of ["", "오늘", "2026-13-45", "undefined", "null"]) {
+      expect(parseDate(junk)).toBeUndefined();
+    }
+  });
+});
+
+// 검색어는 시군·동행처럼 "해제할 수 있는 필터"여야 한다.
+// 헤더 검색창은 layout에서 렌더되어 searchParams를 못 읽으므로 항상 빈칸이고,
+// 해제 링크가 없으면 사용자가 검색어를 되돌릴 방법이 화면에 남지 않는다.
+describe("검색어 해제 링크 — q만 빼고 나머지 조건 보존", () => {
+  const current = {
+    q: "남이섬",
+    type: 12,
+    sigungu: "1,5",
+    profile: "kids",
+    date: "2026-08-15",
+    end: "2026-08-17",
+    pet: "1",
+    tr: "car",
+    sort: "popularity",
+  };
+
+  it("q를 undefined로 덮으면 쿼리에서 사라진다", () => {
+    expect(buildQuery({ ...current, q: undefined })).not.toContain("q=");
+  });
+
+  it("나머지 여행 조건은 그대로 살아남는다", () => {
+    const qs = buildQuery({ ...current, q: undefined });
+    for (const [k, v] of Object.entries(current)) {
+      if (k === "q") continue;
+      expect(qs).toContain(`${k}=${encodeURIComponent(v)}`);
+    }
+  });
+
+  it("검색어만 있던 경우엔 조건 없는 목록으로 돌아간다", () => {
+    expect(buildQuery({ q: undefined })).toBe("");
+  });
+
+  it("빈 문자열도 생략된다 (q=만 남는 URL을 만들지 않는다)", () => {
+    expect(buildQuery({ ...current, q: "" })).not.toContain("q=");
   });
 });

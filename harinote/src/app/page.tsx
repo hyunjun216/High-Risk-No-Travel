@@ -59,7 +59,14 @@ export default async function Home({ searchParams }: Props) {
             <SearchBox profile={profile} date={date} />
           </div>
 
-          <PrefsPersist profile={profile} transport={transport} />
+          {/* 날짜는 여기서만 "고른다" — URL에 date가 실려 온 경우(스테퍼 조작)만 기억을
+              갱신하고, 오늘을 고르면 null로 넘겨 기억을 지운다. 탭으로 그냥 들른 진입은
+              undefined라 손대지 않는다 — 안 그러면 지도에 한 번 들르는 것만으로 날짜가 사라진다 */}
+          <PrefsPersist
+            profile={profile}
+            transport={transport}
+            date={sp.date !== undefined ? (date ?? null) : undefined}
+          />
 
           {/* 날짜 스테퍼 — 원하는 날(오늘~D+3)의 안전지수를 지도에서 바로 확인 */}
           <DateStepper

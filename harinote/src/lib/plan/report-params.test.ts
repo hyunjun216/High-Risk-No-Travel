@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { encodePlanQuery, parseReportQuery } from "@/lib/plan/report-params";
+import {
+  encodePlanQuery,
+  parseReportQuery,
+  REPORT_MAX_STOPS,
+} from "@/lib/plan/report-params";
 import { EMPTY_PLAN, addItem, setTrip, type PlanItem } from "@/lib/travel-plan";
 
 const A: PlanItem = { contentId: 128788, title: "A", lat: 38, lng: 128 };
@@ -30,6 +34,7 @@ describe("parseReportQuery", () => {
       ],
       from: "2026-08-01",
       name: "속초",
+      truncated: false,
     });
   });
   it("깨진 토큰은 버리고 유효한 것만", () => {
@@ -41,8 +46,23 @@ describe("parseReportQuery", () => {
       ],
       from: undefined,
       name: undefined,
+      truncated: false,
     });
   });
+  // 상한 초과분이 조용히 사라지면 사용자는 리포트를 완전한 것으로 읽는다
+  it("상한 초과 시 앞 40곳만 남기고 truncated로 알린다", () => {
+    const s = Array.from({ length: 45 }, (_, i) => `${1000 + i}.1`).join(",");
+    const parsed = parseReportQuery(s, undefined, undefined);
+    expect(parsed?.stops).toHaveLength(REPORT_MAX_STOPS);
+    expect(parsed?.truncated).toBe(true);
+    expect(parsed?.stops.at(-1)?.contentId).toBe(1000 + REPORT_MAX_STOPS - 1);
+  });
+
+  it("정확히 상한이면 잘리지 않는다 (경계)", () => {
+    const s = Array.from({ length: REPORT_MAX_STOPS }, (_, i) => `${1000 + i}.1`).join(",");
+    expect(parseReportQuery(s, undefined, undefined)?.truncated).toBe(false);
+  });
+
   it("전부 무효면 null", () => {
     expect(parseReportQuery("", undefined, undefined)).toBeNull();
     expect(parseReportQuery("x.y,,", undefined, undefined)).toBeNull();

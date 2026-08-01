@@ -53,6 +53,12 @@ export interface TravelPlan {
   nights?: number;
   /** 현재 편집 중인 일차 (카드 담기가 이 일차로 들어감) */
   activeDay?: number;
+  /**
+   * 이 계획이 유래한 저장 계획의 id ("불러와서 수정"으로 열었을 때).
+   * 저장이 새 항목 추가가 아니라 그 항목 갱신이 되게 하는 유일한 단서다 — 없으면
+   * 편집할 때마다 복제본이 쌓이고 20개 상한에서 오래된 계획이 조용히 밀려난다.
+   */
+  savedId?: string;
 }
 
 export const EMPTY_PLAN: TravelPlan = { items: [] };
@@ -173,7 +179,12 @@ export function setTrip(plan: TravelPlan, nights: number, from?: string): Travel
   );
   const activeDay =
     plan.activeDay !== undefined ? Math.min(plan.activeDay, days) : undefined;
-  return { ...plan, nights, from, items, activeDay };
+  // 읽기 검증(isValidPlan)이 받아들이는 형식만 저장한다. <input type="date">는 HTML 스펙상
+  // 연도가 "four or more digits"라 "20266-08-01" 같은 값을 실제로 내보내는데(min은 막지
+  // 못한다 — DateStepper.tsx의 같은 주석 참조), 그대로 담으면 다음 로드에서 isValidPlan이
+  // 계획 전체를 버려 담아둔 관광지·일차·메모까지 사라진다.
+  const validFrom = from !== undefined && isValidISODate(from) ? from : undefined;
+  return { ...plan, nights, from: validFrom, items, activeDay };
 }
 
 /** 중복(contentId) 없이 특정 일차(기본 1)에 추가 */
@@ -263,6 +274,7 @@ export function isValidPlan(v: unknown): v is TravelPlan {
     return false;
   }
   if (!isOptionalIntAtLeast(p.activeDay, 1)) return false;
+  if (p.savedId !== undefined && typeof p.savedId !== "string") return false;
   return p.items.every(
     (it) =>
       typeof it === "object" &&

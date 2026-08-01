@@ -108,6 +108,36 @@ describe("totalDistanceKm (항목 배열)", () => {
 });
 
 describe("N박 여행 (nights/day)", () => {
+  // 쓰기(setTrip)와 읽기(isValidPlan)의 날짜 기준이 어긋나면, 앱이 스스로 쓴 값 때문에
+  // 다음 로드에서 계획 전체가 EMPTY_PLAN으로 버려진다(항목·일차·메모까지 전부).
+  // <input type="date">는 HTML 스펙상 연도가 4자리 이상이라 5자리가 실제로 들어온다.
+  describe("setTrip: 무효한 출발일은 저장하지 않는다", () => {
+    const JUNK = ["20266-08-01", "202660-08-01", "10000-01-01", "2026-13-45", "오늘", ""];
+
+    it.each(JUNK)("%s → from 미설정", (junk) => {
+      expect(setTrip(EMPTY_PLAN, 1, junk).from).toBeUndefined();
+    });
+
+    it.each(JUNK)("%s 를 넣어도 결과는 읽기 검증을 통과한다", (junk) => {
+      expect(isValidPlan(setTrip(EMPTY_PLAN, 1, junk))).toBe(true);
+    });
+
+    it("무효한 날짜 때문에 담아둔 항목이 사라지지 않는다", () => {
+      const p = setTrip(addItems(EMPTY_PLAN, [A, B], 1), 1, "20266-08-01");
+      expect(p.items).toHaveLength(2);
+      expect(p.nights).toBe(1);
+      expect(isValidPlan(p)).toBe(true);
+    });
+
+    it("정상 날짜는 그대로 저장된다", () => {
+      expect(setTrip(EMPTY_PLAN, 1, "2026-08-01").from).toBe("2026-08-01");
+    });
+
+    it("undefined(출발일 미설정)는 그대로 undefined", () => {
+      expect(setTrip(EMPTY_PLAN, 1, undefined).from).toBeUndefined();
+    });
+  });
+
   it("setTrip: 박수·시작일 저장, 총일수 = nights+1", () => {
     const p = setTrip(EMPTY_PLAN, 1, "2026-08-01");
     expect(p.nights).toBe(1);

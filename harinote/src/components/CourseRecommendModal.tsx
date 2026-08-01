@@ -104,14 +104,23 @@ export default function CourseRecommendModal({
   // 결과 키가 현재 조건과 같으면(재열기) 재조회 없이 유지.
   const openModal = () => {
     setOpen(true);
-    const target = sigungu ?? (sigunguCodes.length === 1 ? sigunguCodes[0] : undefined);
+    // 검색 필터가 시군 1곳으로 좁혀져 있으면 **항상** 그쪽을 따른다.
+    // 이전에는 sigungu 상태가 한 번 정해지면 필터 변화를 무시해서, 목록은 속초인데
+    // 팝업은 강릉 코스를 띄웠고 그대로 담으면 다른 지역 스톱이 계획에 들어갔다.
+    // (팝업 안에서 고른 시군은 필터가 넓을 때만 유지된다 — 화면 맥락이 우선)
+    const filtered = sigunguCodes.length === 1 ? sigunguCodes[0] : undefined;
+    const target = filtered ?? sigungu;
     if (target === undefined) return;
-    if (sigungu === undefined) setSigungu(target);
+    if (sigungu !== target) setSigungu(target);
     if (result?.key !== keyOf(target)) load(target);
   };
 
+  const wantedKey = sigungu !== undefined ? keyOf(sigungu) : undefined;
+
+  // result를 명시적으로 좁힌다 — wantedKey가 string | undefined라 `result?.key === wantedKey`
+  // 만으로는 result가 null이 아님을 보장하지 못한다(둘 다 undefined면 참)
   const ready =
-    sigungu !== undefined && result?.key === keyOf(sigungu)
+    sigungu !== undefined && result !== null && result.key === wantedKey
       ? result.data
       : undefined;
   const themesToShow: readonly CourseTheme[] = theme ? [theme] : COURSE_THEMES;
@@ -232,7 +241,10 @@ export default function CourseRecommendModal({
                       만들어 드려요.
                     </p>
                   </div>
-                ) : isPending || (!ready && !failed) ? (
+                ) : isPending ? (
+                  // 진짜 요청 중일 때만 "만드는 중". 이전에는 (!ready && !failed)까지 이 가지에
+                  // 들어와, 결과 키가 어긋났을 뿐 아무 요청도 없는 상태에서 오지 않을 응답을
+                  // 영원히 기다리게 했다.
                   <p className="py-10 text-center text-sm font-semibold text-slate-500">
                     ⏳ {SIGUNGU_SEATS[sigungu].name} 코스를 만드는 중…
                   </p>
@@ -247,6 +259,25 @@ export default function CourseRecommendModal({
                       className="mt-2 rounded-full bg-white px-4 py-1.5 text-xs font-bold text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100"
                     >
                       다시 시도
+                    </button>
+                  </div>
+                ) : !ready ? (
+                  // 모달을 연 채 페이지에서 동행·이동수단·날짜가 바뀌면 결과 키가 어긋나
+                  // 여기로 온다. 조건이 달라졌으니 예전 코스를 그대로 보여주지 않고,
+                  // 무엇이 일어났는지 알린 뒤 사용자가 다시 만들게 한다.
+                  <div className="rounded-2xl bg-amber-50 px-6 py-8 text-center ring-1 ring-amber-100">
+                    <p className="text-sm font-bold text-amber-800">
+                      여행 조건이 바뀌었어요
+                    </p>
+                    <p className="mt-1 text-xs text-amber-700">
+                      바뀐 조건으로 코스를 다시 만들어 드릴게요.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => load(sigungu)}
+                      className="mt-3 rounded-full bg-white px-4 py-1.5 text-xs font-bold text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100"
+                    >
+                      다시 만들기
                     </button>
                   </div>
                 ) : (

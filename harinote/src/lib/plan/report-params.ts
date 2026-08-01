@@ -39,6 +39,8 @@ export interface ReportQuery {
   stops: ReportStop[];
   from?: string;
   name?: string;
+  /** 상한(REPORT_MAX_STOPS) 초과로 뒤쪽 스톱이 잘렸는지 — 안내 없이 사라지면 안 된다 */
+  truncated: boolean;
 }
 
 /** 계획 → 리포트 쿼리스트링 (선행 "?" 미포함). 빈 계획이면 빈 문자열 */
@@ -67,7 +69,8 @@ export function parseReportQuery(
 ): ReportQuery | null {
   if (typeof s !== "string" || s.length === 0) return null;
   const stops: ReportStop[] = [];
-  for (const token of s.split(",").slice(0, REPORT_MAX_STOPS)) {
+  const tokens = s.split(",");
+  for (const token of tokens.slice(0, REPORT_MAX_STOPS)) {
     const m = /^(\d{1,10})\.(\d{1,2})(?:\.([mlaen]))?$/.exec(token);
     if (!m) continue;
     const contentId = Number(m[1]);
@@ -81,6 +84,7 @@ export function parseReportQuery(
 
   return {
     stops,
+    truncated: tokens.length > REPORT_MAX_STOPS,
     from:
       typeof from === "string" && isValidISODate(from) ? from : undefined,
     name:

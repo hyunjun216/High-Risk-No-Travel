@@ -27,7 +27,9 @@ export default function SavedPlansList() {
     ) {
       return;
     }
-    replace(saved.plan);
+    // 어느 저장 계획을 편집 중인지 계획에 새겨 보낸다 — 이게 없으면 저장이 갱신이 아니라
+    // 복제가 되어 목록에 거의 같은 카드가 쌓인다
+    replace({ ...saved.plan, savedId: saved.id });
     router.push("/places");
   };
 

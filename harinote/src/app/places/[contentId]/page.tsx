@@ -38,7 +38,12 @@ import {
   buildQuery,
   type SearchParamValue,
 } from "@/components/search-params";
-import { savedProfile, savedTransport } from "@/lib/prefs";
+import {
+  savedDate,
+  savedEnd,
+  savedProfile,
+  savedTransport,
+} from "@/lib/prefs";
 import { CAR_DISTANCE_KM } from "@/lib/reco/alternatives";
 import PrefsPersist from "@/components/PrefsPersist";
 
@@ -76,7 +81,13 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
 
   // 날짜 모드: D+1~3 예보 / D+4~ 계절 범위. 계산 불가면 오늘 모드 유지.
   // 기간 모드(?date=&end=): 일자별 점수 중 최악일이 대표 — 계산 불가면 단일/오늘로 폴백.
-  const { start: date, end } = parseDateRange(sp.date, sp.end);
+  // URL 파라미터 우선, 없으면 기억된 날짜 (검색·목록에서 고른 날짜가 상세까지 따라온다)
+  // 날짜와 기간은 한 출처에서 — 섞으면 단일 날짜 요청에 남은 hari_end가 붙어 기간 모드가 된다
+  const dateFromUrl = sp.date !== undefined;
+  const { start: date, end } = parseDateRange(
+    dateFromUrl ? sp.date : await savedDate(),
+    dateFromUrl ? sp.end : await savedEnd(),
+  );
 
   const place = await getPlaceWithSafety(contentId, profile);
   if (!place) {
@@ -85,7 +96,12 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
     if (lodging) {
       return (
         <>
-          <PrefsPersist profile={profile} transport={transport} />
+          <PrefsPersist
+            profile={profile}
+            transport={transport}
+            date={sp.date !== undefined ? (date ?? null) : undefined}
+            end={sp.date !== undefined ? (end ?? null) : undefined}
+          />
           <LodgingDetail
             lodging={lodging}
             profile={profile}
@@ -146,7 +162,12 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
-      <PrefsPersist profile={profile} transport={transport} />
+      <PrefsPersist
+        profile={profile}
+        transport={transport}
+        date={sp.date !== undefined ? (date ?? null) : undefined}
+        end={sp.date !== undefined ? (end ?? null) : undefined}
+      />
       <Link
         href={`/places${buildQuery({ profile: profileParam(profile) })}`}
         className="inline-flex items-center gap-1 text-sm font-semibold text-slate-500 transition-colors hover:text-teal-700"

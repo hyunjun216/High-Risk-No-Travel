@@ -52,6 +52,13 @@ export interface StopDiagnosisDto {
   alternatives: StopAlternativeDto[];
 }
 
+/**
+ * 진단 요청 스톱 상한 — 초과하면 서버 액션이 거절한다.
+ * UI가 미리 안내하려면 이 값이 필요한데, "use server" 모듈은 async 함수만 export할 수
+ * 있으므로 상수는 이 DTO 모듈에 둔다.
+ */
+export const MAX_STOPS = 40;
+
 export interface PlanDiagnosisDto {
   stops: StopDiagnosisDto[];
   /** 진단 기준 출발일 — 출발일 미설정이면 오늘 */

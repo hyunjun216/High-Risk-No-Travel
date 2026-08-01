@@ -2,7 +2,7 @@
  * /places 목록 정렬 — URL ?sort= 파라미터별 비교 규칙 (순수 함수).
  *
  * - safety(기본): 안전점수 높은 순 — "어디가 안전한가"가 서비스의 축
- * - relevance: 검색어 일치 강도 순 (검색어 없으면 safety로 폴백)
+ * - relevance: 검색 점수(lib/search)와 안전점수를 섞은 결합 점수 순
  * - popularity: 입장객수(lib/visitors.ts 실데이터) 많은 순, 미매칭은 뒤로
  *
  * 모든 정렬의 동점 처리는 안전점수순 — 목록의 기준 축을 유지한다.
@@ -41,32 +41,50 @@ interface SortablePlace {
 }
 
 /**
- * 검색어 일치 강도 — matchesPlaceQuery(title/addr 포함 일치)로 이미 걸러진
- * 결과에만 서열을 매긴다: 제목 완전일치 > 제목 시작 > 제목 포함 > 주소 포함.
+ * 결합 점수의 배분 — 검색어를 친 사용자에게는 "얼마나 맞는가"가 먼저지만,
+ * 비슷하게 맞는 곳들 사이에서는 더 안전한 쪽이 위로 오게 한다.
+ * 이 서비스에서 검색과 안전점수가 만나는 유일한 지점.
  */
-export function relevanceTier(
-  p: { title: string; addr: string },
-  q: string,
+const RELEVANCE_WEIGHT = 0.75;
+const SAFETY_WEIGHT = 0.25;
+
+/**
+ * 검색 점수와 안전점수를 0~1로 맞춰 섞는다.
+ * BM25 점수는 상한이 없으므로 이번 결과의 최고점으로 나눠 정규화한다.
+ */
+export function combinedScore(
+  relevance: number,
+  maxRelevance: number,
+  safety: number,
 ): number {
-  if (p.title === q) return 3;
-  if (p.title.startsWith(q)) return 2;
-  if (p.title.includes(q)) return 1;
-  return 0;
+  return (
+    RELEVANCE_WEIGHT * (relevance / maxRelevance) +
+    SAFETY_WEIGHT * (safety / 100)
+  );
 }
 
-/** 정렬된 새 배열을 반환 (원본 불변). getVisitors는 테스트 주입용. */
+/**
+ * 정렬된 새 배열을 반환 (원본 불변).
+ * relevance는 contentId → 검색 점수 맵을 받는다 (없으면 safety로 폴백).
+ * getVisitors는 테스트 주입용.
+ */
 export function sortPlaces<T extends SortablePlace>(
   places: T[],
   sort: SortKey,
-  q: string,
+  relevance?: Map<number, number>,
   getVisitors: (contentId: number) => number | undefined = visitorCount,
 ): T[] {
   const bySafety = (a: T, b: T) => b.safety.score - a.safety.score;
-  if (sort === "relevance" && q) {
+
+  if (sort === "relevance" && relevance && relevance.size > 0) {
+    const max = Math.max(...relevance.values()) || 1;
+    const combined = (p: T) =>
+      combinedScore(relevance.get(p.contentId) ?? 0, max, p.safety.score);
     return [...places].sort(
-      (a, b) => relevanceTier(b, q) - relevanceTier(a, q) || bySafety(a, b),
+      (a, b) => combined(b) - combined(a) || bySafety(a, b),
     );
   }
+
   if (sort === "popularity") {
     // 미매칭(undefined)은 -1로 취급해 매칭 0건 구간 전체가 뒤로 밀린다
     return [...places].sort(
@@ -75,6 +93,7 @@ export function sortPlaces<T extends SortablePlace>(
         bySafety(a, b),
     );
   }
-  // safety 기본 — relevance인데 검색어가 없으면 안전점수순 폴백 (드롭다운도 옵션 미노출)
+
+  // safety 기본 — relevance인데 검색 점수가 없으면 안전점수순 폴백 (드롭다운도 옵션 미노출)
   return [...places].sort(bySafety);
 }

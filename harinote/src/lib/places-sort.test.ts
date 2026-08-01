@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { availableSortKeys, relevanceTier, sortPlaces } from "@/lib/places-sort";
+import { availableSortKeys, sortPlaces } from "@/lib/places-sort";
 
 const place = (
   contentId: number,
@@ -7,17 +7,6 @@ const place = (
   score: number,
   addr = "강원특별자치도 어딘가",
 ) => ({ contentId, title, addr, safety: { score } });
-
-describe("relevanceTier", () => {
-  it("제목 완전일치 > 시작 > 포함 > 주소 일치", () => {
-    expect(relevanceTier({ title: "설악산", addr: "" }, "설악산")).toBe(3);
-    expect(relevanceTier({ title: "설악산 케이블카", addr: "" }, "설악산")).toBe(2);
-    expect(relevanceTier({ title: "국립 설악산", addr: "" }, "설악산")).toBe(1);
-    expect(
-      relevanceTier({ title: "무슨 식당", addr: "속초 설악산로 1" }, "설악산"),
-    ).toBe(0);
-  });
-});
 
 describe("sortPlaces", () => {
   const items = [
@@ -28,20 +17,50 @@ describe("sortPlaces", () => {
   ];
 
   it("safety: 안전점수 내림차순", () => {
-    expect(sortPlaces(items, "safety", "").map((p) => p.contentId)).toEqual([
+    expect(sortPlaces(items, "safety").map((p) => p.contentId)).toEqual([
       4, 3, 2, 1,
     ]);
   });
 
-  it("relevance: 일치 강도 순, 동점은 안전점수순", () => {
+  it("relevance: 검색 점수가 높은 쪽이 위", () => {
+    // 안전점수를 같게 두어 검색 점수만으로 순서가 갈리는지 본다
+    const flat = items.map((p) => ({ ...p, safety: { score: 70 } }));
+    const relevance = new Map([
+      [1, 1],
+      [2, 8],
+      [3, 4],
+      [4, 0.5],
+    ]);
     expect(
-      sortPlaces(items, "relevance", "설악산").map((p) => p.contentId),
+      sortPlaces(flat, "relevance", relevance).map((p) => p.contentId),
     ).toEqual([2, 3, 1, 4]);
   });
 
-  it("relevance인데 검색어가 없으면 safety로 폴백", () => {
-    expect(sortPlaces(items, "relevance", "").map((p) => p.contentId)).toEqual(
-      sortPlaces(items, "safety", "").map((p) => p.contentId),
+  it("relevance: 검색 점수가 같으면 안전점수가 순위를 가른다", () => {
+    const relevance = new Map([
+      [1, 5],
+      [2, 5],
+      [3, 5],
+      [4, 5],
+    ]);
+    expect(
+      sortPlaces(items, "relevance", relevance).map((p) => p.contentId),
+    ).toEqual([4, 3, 2, 1]);
+  });
+
+  it("relevance: 검색 점수 차이가 크면 안전점수를 이긴다", () => {
+    // 1번은 검색어에 딱 맞지만 안전점수 최하, 4번은 그 반대
+    const relevance = new Map([
+      [1, 10],
+      [4, 1],
+    ]);
+    const pair = [place(1, "설악산", 0), place(4, "무슨 식당", 100)];
+    expect(sortPlaces(pair, "relevance", relevance)[0].contentId).toBe(1);
+  });
+
+  it("relevance인데 검색 점수가 없으면 safety로 폴백", () => {
+    expect(sortPlaces(items, "relevance").map((p) => p.contentId)).toEqual(
+      sortPlaces(items, "safety").map((p) => p.contentId),
     );
   });
 
@@ -51,7 +70,7 @@ describe("sortPlaces", () => {
       [2, 500_000],
     ]);
     expect(
-      sortPlaces(items, "popularity", "", (id) => visitors.get(id)).map(
+      sortPlaces(items, "popularity", undefined, (id) => visitors.get(id)).map(
         (p) => p.contentId,
       ),
     ).toEqual([2, 1, 4, 3]);
@@ -59,7 +78,7 @@ describe("sortPlaces", () => {
 
   it("원본 배열을 변경하지 않는다", () => {
     const before = items.map((p) => p.contentId);
-    sortPlaces(items, "safety", "");
+    sortPlaces(items, "safety");
     expect(items.map((p) => p.contentId)).toEqual(before);
   });
 });

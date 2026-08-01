@@ -9,7 +9,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { diagnosePlan } from "@/lib/plan/diagnose-action";
 import { STOP_MODE_LABEL, type StopDiagnosisDto } from "@/lib/plan/diagnose";
-import { parseReportQuery } from "@/lib/plan/report-params";
+import { parseReportQuery, REPORT_MAX_STOPS } from "@/lib/plan/report-params";
 import { getPlace } from "@/lib/datasource";
 import { lodgingById, type LodgingPlace } from "@/lib/tour/lodging";
 import type { Place } from "@/lib/tour/types";
@@ -25,7 +25,7 @@ import {
   totalDistanceKm,
   type PlanSlot,
 } from "@/lib/travel-plan";
-import { addDaysISO, formatKoreanDate } from "@/lib/date";
+import { addDaysISO, formatKoreanDate, todayISOSeoul } from "@/lib/date";
 import { parseProfile, type SearchParamValue } from "@/components/search-params";
 import ReportActions from "@/components/ReportActions";
 import ImportPlanButton from "@/components/ImportPlanButton";
@@ -123,7 +123,7 @@ export default async function PlanReportPage({ searchParams }: Props) {
         href="/plans"
         className="inline-flex items-center gap-1 text-sm font-semibold text-slate-500 transition-colors hover:text-teal-700 print:hidden"
       >
-        <span aria-hidden="true">←</span> 내 여행으로 돌아가기
+        <span aria-hidden="true">←</span> 저장한 계획으로 돌아가기
       </Link>
 
       <article className="mt-4 rounded-2xl bg-white p-6 ring-1 ring-slate-200 print:mt-0 print:rounded-none print:p-0 print:ring-0">
@@ -163,6 +163,25 @@ export default async function PlanReportPage({ searchParams }: Props) {
             />
           </div>
         </header>
+
+        {/* 출발일이 지난 계획 — diagnosePlan이 조용히 오늘 기준으로 다시 계산한다(assumedToday).
+            이 사실을 밝히지 않으면 "1일차 · 8월 1일"이라는 제목 아래 오늘 날씨로 매긴 점수가
+            놓여, 리포트 전체가 지난 날짜의 예보인 것처럼 읽힌다. */}
+        {/* 상한 초과로 뒤쪽 스톱이 빠졌다 — 조용히 사라지면 리포트를 완전한 것으로 읽는다 */}
+        {q.truncated && (
+          <p className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 ring-1 ring-amber-200">
+            스톱이 {REPORT_MAX_STOPS}곳을 넘어 <strong>앞 {REPORT_MAX_STOPS}곳만</strong>{" "}
+            담았어요. 나머지는 이 리포트에 없습니다.
+          </p>
+        )}
+
+        {diagnosis.assumedToday && q.from && (
+          <p className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 ring-1 ring-amber-200">
+            출발일({formatKoreanDate(q.from)})이 지나, 아래 점수는{" "}
+            <strong>오늘({formatKoreanDate(todayISOSeoul())}) 기준</strong>으로 다시
+            계산했어요. 일차별 날짜는 원래 계획 날짜입니다.
+          </p>
+        )}
 
         {/* ② 계획 요약 */}
         <section className="mt-5 print:mt-4">

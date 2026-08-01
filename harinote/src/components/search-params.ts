@@ -92,15 +92,27 @@ export function parsePage(v: SearchParamValue): number {
   return Number.isInteger(n) && n >= 1 ? n : 1;
 }
 
-/** 정렬 파라미터 파싱 — 화이트리스트, 그 외·누락은 기본 안전점수순 */
-export function parseSort(v: SearchParamValue): SortKey {
-  const s = first(v);
-  return s === "relevance" || s === "popularity" ? s : "safety";
+/**
+ * 정렬의 기본값은 맥락에 따라 다르다 — 목록은 안전점수순, 검색 중에는 정확도순.
+ * 검색어를 친 사용자에게는 "얼마나 맞는가"가 먼저 보여야 하기 때문.
+ */
+function defaultSort(hasQuery: boolean): SortKey {
+  return hasQuery ? "relevance" : "safety";
 }
 
-/** sort=safety(기본)는 URL에서 생략 */
-export function sortParam(sort: SortKey): string | undefined {
-  return sort === "safety" ? undefined : sort;
+/** 정렬 파라미터 파싱 — 화이트리스트, 그 외·누락은 맥락별 기본값 */
+export function parseSort(v: SearchParamValue, hasQuery = false): SortKey {
+  const s = first(v);
+  if (s === "relevance" || s === "popularity" || s === "safety") return s;
+  return defaultSort(hasQuery);
+}
+
+/** 기본값은 URL에서 생략 — 기본값이 아닌 값은 반드시 남겨야 되돌아가지 않는다 */
+export function sortParam(
+  sort: SortKey,
+  hasQuery = false,
+): string | undefined {
+  return sort === defaultSort(hasQuery) ? undefined : sort;
 }
 
 /**

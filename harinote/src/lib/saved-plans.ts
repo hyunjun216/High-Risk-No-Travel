@@ -25,6 +25,22 @@ export function upsertSavedPlan(
   return [entry, ...rest].slice(0, MAX_SAVED_PLANS);
 }
 
+/**
+ * 저장할 항목 만들기 — "불러와서 수정"으로 연 계획(plan.savedId)은 그 id를 이어받아
+ * upsertSavedPlan이 교체하게 하고, 새 계획만 새 id를 받는다.
+ *
+ * 늘 새 id를 발급하면 편집·저장을 반복할 때마다 거의 같은 카드가 쌓이고,
+ * MAX_SAVED_PLANS(20)에 닿는 순간 관계없는 오래된 계획이 아무 안내 없이 사라진다.
+ */
+export function savedEntryFor(
+  plan: TravelPlan,
+  name: string,
+  savedAt: string,
+  newId: () => string,
+): SavedPlan {
+  return { id: plan.savedId ?? newId(), name, savedAt, plan };
+}
+
 export function removeSavedPlan(list: SavedPlan[], id: string): SavedPlan[] {
   return list.filter((p) => p.id !== id);
 }

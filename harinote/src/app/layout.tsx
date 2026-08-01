@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import HeaderSearch from "@/components/HeaderSearch";
 import Logo from "@/components/Logo";
 import NavTabs from "@/components/NavTabs";
 import SearchBox from "@/components/SearchBox";
@@ -37,10 +38,10 @@ export default function RootLayout({
                 High Risk, No Travel
               </span>
             </Link>
-            {/* 전역 검색 — 모든 페이지에서 접근 (md+, 모바일은 페이지 내 검색) */}
-            <div className="hidden max-w-xs flex-1 items-center self-center md:flex">
+            {/* 전역 검색 — md+에서 노출. /places는 조건을 아는 자체 검색창이 있어 비운다 */}
+            <HeaderSearch>
               <SearchBox compact />
-            </div>
+            </HeaderSearch>
             <NavTabs />
           </div>
         </header>

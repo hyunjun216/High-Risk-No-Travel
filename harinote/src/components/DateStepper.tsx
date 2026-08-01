@@ -16,8 +16,11 @@ interface Props {
 }
 
 /**
- * 안전지도 날짜 스테퍼 — [−하루] [날짜] [+하루].
- * 오늘~D+3만 이동 가능. 오늘이면 ?date를 URL에서 제거(오늘 모드 규약 유지).
+ * 안전지도 날짜 스테퍼 — [−하루] [날짜] [+하루]. 오늘~D+3만 이동 가능.
+ *
+ * 오늘을 골라도 ?date를 실어 보낸다. parseDate가 오늘을 거부하므로 결과는 그대로 오늘 모드지만,
+ * URL에 date가 있다는 사실이 "사용자가 날짜를 골랐다"는 신호가 되어 기억(hari_date) 갱신과
+ * 구분된다 — 생략하면 탭으로 홈에 들르기만 해도 고른 날짜가 지워진다.
  */
 export default function DateStepper({
   current,
@@ -29,10 +32,7 @@ export default function DateStepper({
   const { selected, prev, next } = stepperView(current, todayISO, maxISO);
 
   function navigate(iso: string) {
-    const q = buildQuery({
-      ...extraParams,
-      date: iso === todayISO ? undefined : iso,
-    });
+    const q = buildQuery({ ...extraParams, date: iso });
     router.replace(`/${q}`, { scroll: false });
   }
 

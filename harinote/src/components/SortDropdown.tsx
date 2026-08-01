@@ -42,7 +42,9 @@ export default function SortDropdown({ sort, hasQuery, currentParams }: Props) {
           return (
             <Link
               key={key}
-              href={`/places${buildQuery({ ...currentParams, sort: sortParam(key) })}`}
+              // 기본값은 맥락에 따라 다르다 — 검색 중에는 안전점수순을 URL에 명시해야
+              // 기본값(정확도순)으로 되돌아가지 않는다 (search-params.ts)
+              href={`/places${buildQuery({ ...currentParams, sort: sortParam(key, hasQuery) })}`}
               aria-current={active ? "true" : undefined}
               className={`block rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
                 active

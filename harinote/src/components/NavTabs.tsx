@@ -6,8 +6,8 @@ import { activeTab, type TabKey } from "./nav-active";
 
 const TABS: { key: TabKey; href: string; label: string }[] = [
   { key: "map", href: "/", label: "안전 지도" },
-  { key: "places", href: "/places", label: "관광지 검색" },
-  { key: "plans", href: "/plans", label: "내 여행" },
+  { key: "places", href: "/places", label: "여행 계획" },
+  { key: "plans", href: "/plans", label: "저장한 계획" },
 ];
 
 /** 헤더 탭 바 — 현재 라우트의 탭에 teal 밑줄 표시 */

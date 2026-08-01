@@ -75,10 +75,20 @@ export default function CourseCard({ course, profile, onAdded }: Props) {
   };
 
   // 현재 선택 조합을 내 여행 계획의 활성 일차에 일괄 담기
-  const { addMany, activeDay } = useTravelPlan();
+  const { addMany, activeDay, has } = useTravelPlan();
   const [added, setAdded] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
+  // 이미 계획에 있는 스톱은 addItem이 조용히 건너뛴다 — 몇 곳이 빠졌는지 알려주지 않으면
+  // "✓ 담았어요" + 모달 닫힘만 보고 전부 담긴 줄 안다
+  const [skipped, setSkipped] = useState(0);
   const addCourseToPlan = () => {
+    const dupes = chosen.filter((p) => has(p.contentId)).length;
+    if (dupes === chosen.length) {
+      // 담을 게 하나도 없다 — 저장도 성공 표시도 하지 않고 이유만 알린다
+      setSkipped(dupes);
+      setTimeout(() => setSkipped(0), 3000);
+      return;
+    }
     // 저장 실패(쿼터·저장소 차단) 시 write()가 false — 성공 표시·모달 닫기를 막는다
     const ok = addMany(
       // 코스의 슬롯(오전/점심/오후)을 계획에도 그대로 보존한다
@@ -92,6 +102,12 @@ export default function CourseCard({ course, profile, onAdded }: Props) {
     }
     setAdded(true);
     setTimeout(() => setAdded(false), 2000);
+    if (dupes > 0) {
+      // 일부만 담겼으면 모달을 닫지 않는다 — 닫으면 누락 안내가 보이기도 전에 사라진다
+      setSkipped(dupes);
+      setTimeout(() => setSkipped(0), 3000);
+      return;
+    }
     onAdded?.();
   };
 
@@ -125,6 +141,13 @@ export default function CourseCard({ course, profile, onAdded }: Props) {
           >
             {added ? "✓ 담았어요" : saveFailed ? "저장 못 했어요" : "+ 내 계획에 담기"}
           </button>
+          {skipped > 0 && (
+            <p className="max-w-[13rem] text-right text-[11px] font-semibold text-amber-700">
+              {skipped === chosen.length
+                ? "이 코스는 이미 계획에 담겨 있어요"
+                : `이미 담긴 ${skipped}곳은 빼고 담았어요`}
+            </p>
+          )}
         </div>
       </div>
 

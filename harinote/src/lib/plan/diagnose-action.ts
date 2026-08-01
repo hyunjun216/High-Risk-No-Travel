@@ -24,13 +24,14 @@ import { CAR_DISTANCE_KM, recommendAlternatives } from "@/lib/reco/alternatives"
 import { addDaysISO, dayOffsetSeoul, isValidISODate, todayISOSeoul } from "@/lib/date";
 import { lodgingById } from "@/lib/tour/lodging";
 import {
+  MAX_STOPS,
   topRiskFactors,
   type PlanDiagnosisDto,
   type StopDiagnosisDto,
 } from "@/lib/plan/diagnose";
 
 /** 플래너 상한(3박 4일 × 일차별 담기)보다 넉넉한 방어 상한 */
-const MAX_STOPS = 40;
+// MAX_STOPS는 diagnose.ts에 둔다 — "use server" 모듈은 async 함수만 export할 수 있다
 const MAX_DAY = 14;
 /** 스톱당 교체 후보 수 — 패널 안에 들어가야 해서 소수만 */
 const ALT_LIMIT = 2;

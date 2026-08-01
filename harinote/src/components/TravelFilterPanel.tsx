@@ -167,9 +167,10 @@ export default function TravelFilterPanel({
             <Link
               href={hrefWith({
                 sigungu: undefined,
-                profile: undefined,
                 pet: undefined,
-                // tr 명시 초기화 — 생략하면 쿠키의 car가 폴백된다
+                // 쿠키에 기억되는 조건은 명시 초기화 — 생략하면 URL에 없다는 이유로
+                // 쿠키 값(아이 동반·자차)이 폴백돼 초기화가 되지 않는다
+                profile: "default",
                 tr: "transit",
               })}
               className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-200"
