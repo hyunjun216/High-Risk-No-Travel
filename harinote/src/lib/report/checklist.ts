@@ -43,7 +43,7 @@ export function buildChecklist(
   }
 
   // 강풍 — 감점 시작점(9m/s)부터 기본, 산악/해안은 강화 문구
-  if (input.windMs >= RAIN_WIND.WIND_CAUTION_MS) {
+  if (input.windMs !== undefined && input.windMs >= RAIN_WIND.WIND_CAUTION_MS) {
     if (
       place.envType === "outdoor_mountain" ||
       place.envType === "outdoor_coast"

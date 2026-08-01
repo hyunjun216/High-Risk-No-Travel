@@ -33,8 +33,8 @@ export interface RiskInput {
   rainProbPct: number;
   /** 예상 강수량 mm (선택) */
   rainMm?: number;
-  /** 풍속 m/s */
-  windMs: number;
+  /** 풍속 m/s — 중기예보(D+4~)는 미제공. 없으면 TCI 풍속 축 제외 후 재정규화 */
+  windMs?: number;
   /** 일조시간 대용(h) — 하늘상태(SKY) 환산. TCI 일조 축. 없으면 4축 재정규화 */
   sunHours?: number;
   /** 초미세먼지 PM2.5 ㎍/㎥ (AirKorea) */

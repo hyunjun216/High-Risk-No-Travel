@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   computeTci,
+  computeTciBreakdown,
   pmScore,
   rainScore,
   sunScore,
@@ -116,5 +117,44 @@ describe("computeTci — 관광기후지수 0~100", () => {
     const dry = computeTci({ feelsC: 22, rainMmDaily: 0, windMs: 1, pm25: 10 });
     const wet = computeTci({ feelsC: 22, rainMmDaily: 5, windMs: 1, pm25: 10 });
     expect(wet).toBeLessThan(dry);
+  });
+});
+
+// 중기예보(D+4~)는 풍속을 제공하지 않는다 — 일조와 같은 "축 제외 후 재정규화" 경로를 탄다.
+// 가드가 빠지면 windScore(undefined)가 NaN 비교로 0점(강풍 최악)이 되어 조용히 감점된다.
+describe("풍속 미제공 — 축 제외 후 재정규화", () => {
+  const base = { feelsC: 21, rainMmDaily: 0, pm25: 10, sunHours: 8 };
+
+  it("계산되고 0~100 범위 (NaN 아님)", () => {
+    const tci = computeTci(base);
+    expect(Number.isNaN(tci)).toBe(false);
+    expect(tci).toBeGreaterThanOrEqual(0);
+    expect(tci).toBeLessThanOrEqual(100);
+  });
+
+  it("무풍(최선)도 강풍(최악)도 아닌 중간 — 결측이 유불리로 새지 않는다", () => {
+    const calm = computeTci({ ...base, windMs: 0.5 }); // windScore 5.0
+    const gale = computeTci({ ...base, windMs: 14 }); // windScore 0
+    const absent = computeTci(base);
+    expect(absent).toBeLessThan(calm);
+    expect(absent).toBeGreaterThan(gale);
+  });
+
+  it("wind 감점은 0", () => {
+    expect(computeTciBreakdown(base).deductions.wind).toBe(0);
+  });
+
+  it("남은 축 배점이 재정규화로 커진다 (9% 몫을 나눠 가짐)", () => {
+    const bad = { feelsC: 21, rainMmDaily: 0, pm25: 100, sunHours: 8 }; // pmScore 0 → 배점 전액 감점
+    const withWind = computeTciBreakdown({ ...bad, windMs: 2 }).deductions.pm;
+    const withoutWind = computeTciBreakdown(bad).deductions.pm;
+    expect(withoutWind).toBeGreaterThan(withWind);
+    expect(withoutWind).toBeCloseTo(withWind / (1 - 0.09), 1); // TCI_WEIGHTS.wind = 0.09
+  });
+
+  it("풍속·일조 둘 다 없어도(중기예보 최악 케이스) 3축으로 계산", () => {
+    const tci = computeTci({ feelsC: 21, rainMmDaily: 0, pm25: 10 });
+    expect(Number.isNaN(tci)).toBe(false);
+    expect(tci).toBeGreaterThanOrEqual(80); // 남은 3축이 모두 좋으면 여전히 상위 등급
   });
 });

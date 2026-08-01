@@ -130,17 +130,21 @@ export function computeSafetyScore(
       input.rainMm !== undefined && input.rainMm >= 3 ? ` · ${input.rainMm}mm` : ""
     } (관광기후지수 강수)`,
   });
-  factors.push({
-    key: "wind",
-    label: "바람",
-    value: input.windMs,
-    unit: "m/s",
-    threshold: 9,
-    points: windPts,
-    maxPoints: WEATHER_MAX.wind,
-    level: levelForPoints(windPts, WEATHER_MAX.wind),
-    description: `풍속 ${input.windMs}m/s (관광기후지수 풍속)`,
-  });
+  // 바람 요인 — 풍속 데이터 있을 때만 표시(없으면 TCI 4축 재정규화라 감점 0).
+  // 중기예보(D+4~)는 풍속을 제공하지 않는다.
+  if (input.windMs !== undefined) {
+    factors.push({
+      key: "wind",
+      label: "바람",
+      value: input.windMs,
+      unit: "m/s",
+      threshold: 9,
+      points: windPts,
+      maxPoints: WEATHER_MAX.wind,
+      level: levelForPoints(windPts, WEATHER_MAX.wind),
+      description: `풍속 ${input.windMs}m/s (관광기후지수 풍속)`,
+    });
+  }
   factors.push({
     key: "pm",
     label: "미세먼지",

@@ -112,8 +112,10 @@ describe("mockRiskInputFor — 분포/보정", () => {
       const general = mockRiskInputFor(place(id, "outdoor_general"));
       const mountain = mockRiskInputFor(place(id, "outdoor_mountain"));
       const coast = mockRiskInputFor(place(id, "outdoor_coast"));
-      expect(mountain.windMs).toBeGreaterThan(general.windMs);
-      expect(coast.windMs).toBeGreaterThan(general.windMs);
+      // mock은 windMs를 항상 채운다 (중기예보 경로만 미설정 — RiskInput.windMs 주석 참조)
+      expect(general.windMs).toBeDefined();
+      expect(mountain.windMs!).toBeGreaterThan(general.windMs!);
+      expect(coast.windMs!).toBeGreaterThan(general.windMs!);
     }
   });
 

@@ -93,10 +93,10 @@ export function mockRiskInputFor(
 
   // envType별 가벼운 현실 보정
   if (envType === "outdoor_mountain") {
-    input.windMs = round1(input.windMs + 2); // 산악 능선 풍속↑
+    if (input.windMs !== undefined) input.windMs = round1(input.windMs + 2); // 산악 능선 풍속↑
     input.emergencyRoomKm = round1(input.emergencyRoomKm + 4); // 산간 접근성↓
   } else if (envType === "outdoor_coast") {
-    input.windMs = round1(input.windMs + 3); // 해안 해풍↑
+    if (input.windMs !== undefined) input.windMs = round1(input.windMs + 3); // 해안 해풍↑
   }
 
   // 한계: 습도(REH)를 생성하지 않아 체감온도(apparentTempC) 미설정 — 폭염은 건구 최고기온으로 평가

@@ -97,13 +97,14 @@ export function pmScore(pm25: number): number {
   return 0;
 }
 
-/** TCI 입력 — RiskInput에서 조립. sunHours는 선택(예보 하늘상태 확보 전). */
+/** TCI 입력 — RiskInput에서 조립. windMs·sunHours는 선택(예보가 안 주면 축 제외). */
 export interface TciInput {
   feelsC: number;
   rainMmDaily?: number;
   /** 강수확률 % — 예보 강수량이 없어도 비 가능성이 높으면 강수 감점에 반영 */
   rainProbPct?: number;
-  windMs: number;
+  /** 풍속 m/s — 중기예보 미제공. 없으면 wind 축 제외 후 재정규화(sunHours와 동일) */
+  windMs?: number;
   pm25: number;
   sunHours?: number;
 }
@@ -123,14 +124,14 @@ export const TCI_WEIGHTS = {
 
 /**
  * 관광기후지수 0~100. 각 세부점수(-3~5)를 (s/5)로 정규화해 가중합 후 0~100 스케일.
- * 일조 미제공 시 sun 가중을 빼고 나머지를 재정규화(정보 없는 축이 불이익 주지 않게).
+ * 일조·풍속 미제공 시 해당 가중을 빼고 나머지를 재정규화(정보 없는 축이 불이익 주지 않게).
  */
 export function computeTci(input: TciInput): number {
   const s = {
     thermal: thermalScore(input.feelsC),
     rain: rainScore(input.rainMmDaily, input.rainProbPct),
     pm: pmScore(input.pm25),
-    wind: windScore(input.windMs),
+    wind: input.windMs !== undefined ? windScore(input.windMs) : undefined,
     sun: input.sunHours !== undefined ? sunScore(input.sunHours) : undefined,
   };
 
@@ -138,7 +139,7 @@ export function computeTci(input: TciInput): number {
   let acc = 0;
   for (const key of ["thermal", "rain", "pm", "wind", "sun"] as const) {
     const score = s[key];
-    if (score === undefined) continue; // 일조 결측 → 제외 후 재정규화
+    if (score === undefined) continue; // 일조·풍속 결측 → 제외 후 재정규화
     const w = TCI_WEIGHTS[key];
     acc += w * (score / 5);
     wSum += w;
@@ -163,7 +164,7 @@ export function computeTciBreakdown(input: TciInput): TciBreakdown {
     thermal: thermalScore(input.feelsC),
     rain: rainScore(input.rainMmDaily, input.rainProbPct),
     pm: pmScore(input.pm25),
-    wind: windScore(input.windMs),
+    wind: input.windMs !== undefined ? windScore(input.windMs) : undefined,
     sun: input.sunHours !== undefined ? sunScore(input.sunHours) : undefined,
   };
   let wSum = 0;

@@ -247,3 +247,44 @@ describe("점수 일관성 / 등급", () => {
     expect(run({}).profile).toBe("default");
   });
 });
+
+// 중기예보(D+4~) 입력 — 풍속·강수량·체감온도를 제공하지 않는다.
+describe("풍속 미제공 — 요인 비표시 + 총점 무결성", () => {
+  it("바람 요인이 생성되지 않는다 (일조 축과 동일 규칙)", () => {
+    const keys = run({ windMs: undefined }).factors.map((f) => f.key);
+    expect(keys).not.toContain("wind");
+    expect(keys).toContain("rain"); // 나머지 기상 축은 그대로
+  });
+
+  it("요인 설명에 undefined가 새지 않는다", () => {
+    for (const f of run({ windMs: undefined }).factors) {
+      expect(f.description).not.toContain("undefined");
+      expect(Number.isFinite(f.value)).toBe(true);
+    }
+  });
+
+  it("weatherRisk는 여전히 표시 요인 합과 일치", () => {
+    const b = run({ windMs: undefined, tempC: 33, rainProbPct: 70, pm25: 50 });
+    const sum = b.factors
+      .filter((f) => ["heat", "rain", "wind", "pm", "sun"].includes(f.key))
+      .reduce((s, f) => s + f.points, 0);
+    expect(b.weatherRisk).toBe(sum);
+  });
+
+  it("풍속 결측이 강풍으로 취급되지 않는다 (미풍보다 낮고 강풍보다 높은 점수)", () => {
+    expect(run({ windMs: undefined }).score).toBeGreaterThan(run({ windMs: 15 }).score);
+    expect(run({ windMs: undefined }).score).toBeLessThanOrEqual(run({ windMs: 0.5 }).score);
+  });
+
+  it("중기예보 조합(풍속·강수량·체감온도 없음)도 정상 점수", () => {
+    const b = run({
+      windMs: undefined,
+      rainMm: undefined,
+      apparentTempC: undefined,
+      sunHours: 8,
+    });
+    expect(b.score).toBeGreaterThanOrEqual(0);
+    expect(b.score).toBeLessThanOrEqual(100);
+    expect(b.factors.map((f) => f.key)).not.toContain("heavy_rain"); // 강수량 없음 → 축 비활성
+  });
+});
