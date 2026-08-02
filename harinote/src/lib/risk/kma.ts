@@ -21,6 +21,25 @@ const BASE_HOURS = [2, 5, 8, 11, 14, 17, 20];
 /** 발표 후 API 반영 대기 여유 (분) */
 const PUBLISH_DELAY_MIN = 10;
 
+/**
+ * 관광 활동시간대(KST, 경계 포함) — 쾌적층(TCI) 입력을 집계하는 창.
+ *
+ * 강수확률·풍속은 "여행자가 밖에 있는 동안 겪는 불편"이라 새벽 소나기 확률이나
+ * 밤바람이 낮 나들이의 쾌적도를 깎으면 안 된다. 일조(SKY)는 해 있는 시간이 기준이라
+ * 별도 창(09~18시)을 쓴다.
+ *
+ * 창을 적용하지 않는 축:
+ * - 강수량(PCP) 누적·산사태 프록시 — 안전층. 호우특보 기준이 일 누적이고, 밤 비는
+ *   지반 약화·하천 증수로 다음 낮까지 위험이 남는다.
+ * - 기온(TMX/TMN) — 애초에 일 단위 통계값이라 시간대 창이 정의되지 않는다.
+ *   체감온도도 이 값들과 기준을 맞춰 하루 전체를 유지한다(여름 최고는 낮이라 실질 동일).
+ *
+ * 남는 결과: 밤에 실제 강수량이 있는 날은 rainScore의 강수량 축(하루 누적)이 여전히
+ * 쾌적을 깎는다 — 젖은 노면·불어난 계곡은 다음 낮의 관광 조건이라 의도된 동작이다.
+ */
+const ACTIVITY_START = "0900";
+const ACTIVITY_END = "2000";
+
 export interface KmaDailyWeather {
   /** 오늘 최고기온 ℃ (TMX, 없으면 남은 시간대 TMP 최댓값) */
   tempC?: number;
@@ -136,6 +155,23 @@ function requireApiKey(): string {
 }
 
 /**
+ * 활동시간대(ACTIVITY_START~END) 최댓값 — 창 안 데이터가 하나도 없으면 하루 전체로 폴백.
+ *
+ * 저녁에 "오늘"을 조회하면 활동시간이 이미 지나 응답에 남지 않는다. 그때 undefined를
+ * 돌려주면 TCI가 축을 빼고 재정규화하는 게 아니라, RiskInput의 필수 필드(rainProbPct)에
+ * mock 값이 그대로 남아 실측 기온과 섞인다 — live.ts의 "핵심값이 있으면 날씨는 통째로
+ * 실데이터화" 계약 위반. 지나간 시간대라도 실측이 mock보다 낫다.
+ */
+function activityMax(byTime: Map<string, number>): number | undefined {
+  const all = [...byTime.values()];
+  const inWindow = [...byTime.entries()]
+    .filter(([t]) => t >= ACTIVITY_START && t <= ACTIVITY_END)
+    .map(([, v]) => v);
+  const source = inWindow.length > 0 ? inWindow : all;
+  return source.length > 0 ? Math.max(...source) : undefined;
+}
+
+/**
  * 예보 item 목록 → 하루 요약.
  * fallbackToEarliest(오늘 조회 전용): targetDate의 item이 없으면 가장 이른
  * 예보일로 대체한다. 미래 날짜 조회에서는 끄고 빈 요약을 돌려받아
@@ -173,9 +209,10 @@ export function summarizeDaily(
   let tmn: number | undefined;
   let tmpMax: number | undefined;
   let tmpMin: number | undefined;
-  let popMax: number | undefined;
-  let wsdMax: number | undefined;
   let pcpSum: number | undefined;
+  // 강수확률·풍속은 쾌적층(TCI) 입력 — 활동시간대만 집계하려 시각별로 모은다 (activityMax)
+  const popByTime = new Map<string, number>();
+  const wsdByTime = new Map<string, number>();
   // 체감온도용 시간별 TMP·REH 쌍 — TMX(일최고기온) 발생 시각의 REH는 알 수 없어 시간별 TMP 기반 근사다
   const tmpByTime = new Map<string, number>();
   const rehByTime = new Map<string, number>();
@@ -202,10 +239,10 @@ export function summarizeDaily(
         if (Number.isFinite(n)) rehByTime.set(item.fcstTime, n);
         break;
       case "POP":
-        if (Number.isFinite(n)) popMax = popMax === undefined ? n : Math.max(popMax, n);
+        if (Number.isFinite(n)) popByTime.set(item.fcstTime, n);
         break;
       case "WSD":
-        if (Number.isFinite(n)) wsdMax = wsdMax === undefined ? n : Math.max(wsdMax, n);
+        if (Number.isFinite(n)) wsdByTime.set(item.fcstTime, n);
         break;
       case "SKY":
         if (Number.isFinite(n)) skyByTime.set(item.fcstTime, n);
@@ -249,7 +286,9 @@ export function summarizeDaily(
   if (tempC !== undefined) weather.tempC = tempC;
   const tminC = tmn ?? tmpMin;
   if (tminC !== undefined) weather.tminC = tminC;
+  const popMax = activityMax(popByTime);
   if (popMax !== undefined) weather.rainProbPct = popMax;
+  const wsdMax = activityMax(wsdByTime);
   if (wsdMax !== undefined) weather.windMs = wsdMax;
   if (pcpSum !== undefined) weather.rainMm = Math.round(pcpSum * 10) / 10;
   if (apparentMax !== undefined) weather.apparentTempC = apparentMax;

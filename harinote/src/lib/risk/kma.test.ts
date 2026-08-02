@@ -219,6 +219,57 @@ describe("summarizeDaily", () => {
     expect(w.tempC).toBe(2); // 건구기온 요약은 그대로
   });
 
+  it("강수확률은 활동시간대(09~20시) 최댓값 — 새벽 소나기가 낮 쾌적을 깎지 않는다", () => {
+    const items = [
+      item("POP", "70", "20260703", "0300"), // 여행자가 자는 시간
+      item("POP", "20", "20260703", "1200"),
+      item("TMP", "28"),
+    ];
+    expect(summarizeDaily(items, "20260703").rainProbPct).toBe(20);
+  });
+
+  it("풍속도 같은 창 — 밤바람은 쾌적 감점에서 제외", () => {
+    const items = [
+      item("WSD", "9.0", "20260703", "2300"),
+      item("WSD", "3.0", "20260703", "1200"),
+      item("TMP", "28"),
+    ];
+    expect(summarizeDaily(items, "20260703").windMs).toBe(3.0);
+  });
+
+  it("활동시간대 경계(0900·2000)는 창에 포함한다", () => {
+    const items = [
+      item("POP", "40", "20260703", "0900"),
+      item("POP", "50", "20260703", "2000"),
+      item("POP", "90", "20260703", "2100"), // 창 밖
+    ];
+    expect(summarizeDaily(items, "20260703").rainProbPct).toBe(50);
+  });
+
+  it("창 안 데이터가 없으면(저녁 조회) 하루 전체로 폴백 — mock 값 혼입 방지", () => {
+    // 21시에 "오늘"을 조회하면 활동시간대는 이미 지나 응답에 남지 않는다.
+    // undefined를 돌려주면 필수 필드(rainProbPct)가 mock 값으로 남아 실측과 섞인다.
+    const items = [
+      item("POP", "60", "20260703", "2100"),
+      item("WSD", "8.0", "20260703", "2200"),
+      item("TMP", "24", "20260703", "2100"),
+    ];
+    const w = summarizeDaily(items, "20260703");
+    expect(w.rainProbPct).toBe(60);
+    expect(w.windMs).toBe(8.0);
+  });
+
+  it("강수량 누적은 창과 무관하게 하루 전체 — 안전층(호우·산사태) 입력", () => {
+    const items = [
+      item("PCP", "40.0mm", "20260703", "0300"), // 새벽 호우
+      item("PCP", "강수없음", "20260703", "1200"),
+      item("POP", "20", "20260703", "1200"),
+    ];
+    const w = summarizeDaily(items, "20260703");
+    expect(w.rainMm).toBe(40);
+    expect(w.rainProbPct).toBe(20); // 쾌적층 확률만 창 적용
+  });
+
   it("미래 날짜 조회: 오전 예보만 남은 반쪽 응답이면 빈 요약 — 최고기온 과소평가 방지", () => {
     // TMX 없고 TMP도 15시 이전뿐 (응답 절단으로 하루 중간에서 끊긴 상황)
     const truncated = [
