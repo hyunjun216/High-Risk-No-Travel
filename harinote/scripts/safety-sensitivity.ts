@@ -18,6 +18,7 @@ import {
   FOREST_FIRE,
   HEAVY_RAIN,
   LANDSLIDE,
+  coldPoints,
   type EnvWeight,
   type SafetyTuning,
 } from "../src/lib/safety/weights";
@@ -79,6 +80,12 @@ const ENV_TYPES: PlaceEnvType[] = [
 /** 교란 대상이 아닌 축은 고정 — 그리드 폭발을 막고 안전층 신호를 또렷하게 둔다 */
 const FIXED_WIND_MS = 3;
 const FIXED_SUN_HOURS = 7;
+/**
+ * 일교차(℃) — 최저기온은 그리드 축을 늘리지 않고 체감온도에서 파생시킨다.
+ * 7을 쓰면 가장 추운 셀(-5℃)의 최저가 -12℃가 되어 한파주의보 기준에 정확히 닿는다.
+ * 나머지 셀은 -5℃를 넘어 한파 감점 0 — 즉 한파 교란의 활성 셀은 최저온 구간뿐이다.
+ */
+const DIURNAL_RANGE_C = 7;
 
 export interface Cell {
   input: RiskInput;
@@ -109,6 +116,7 @@ export function buildGrid(): Cell[] {
                   input: {
                     tempC: feels,
                     apparentTempC: feels,
+                    tminC: feels - DIURNAL_RANGE_C,
                     rainProbPct: w.rainProbPct,
                     rainMm: w.rainMm,
                     windMs: FIXED_WIND_MS,
@@ -184,6 +192,9 @@ const isLandslideActive = (c: Cell) =>
   (c.input.landslideLevel ?? 0) > 0 ||
   ((c.input.rainMm ?? 0) >= LANDSLIDE.WATCH_RAIN_MM && c.envType !== "indoor");
 const isEnvActive = (envType: PlaceEnvType) => (c: Cell) => c.envType === envType;
+/** 한파는 최저기온이 감점 시작점(-5℃) 아래로 내려간 셀에서만 의미가 있다 */
+const isColdActive = (c: Cell) =>
+  c.input.tminC !== undefined && coldPoints(c.input.tminC) > 0;
 
 /** ±20% — 24_safety_sensitivity.md가 채택한 교란 폭 */
 const FACTORS = [0.8, 1.2] as const;
@@ -233,6 +244,12 @@ export function buildPerturbations(): Perturbation[] {
     });
     out.push({
       tier: "A",
+      name: `한파 곡선 ${pct}`,
+      tuning: { coldMult: f },
+      isActive: isColdActive,
+    });
+    out.push({
+      tier: "A",
       name: `안전층 전체 동시 ${pct}`,
       tuning: {
         fire: scaleRecord(FOREST_FIRE.POINTS_BY_LEVEL, f),
@@ -244,6 +261,7 @@ export function buildPerturbations(): Perturbation[] {
         },
         medicalMult: f,
         shelterMult: f,
+        coldMult: f,
       },
       isActive: () => true,
     });

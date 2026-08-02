@@ -14,13 +14,7 @@ import elevationsJson from "@/data/elevations.json";
 import type { Place } from "@/lib/tour/types";
 import type { Profile, RiskBreakdown, RiskInput } from "@/lib/safety/types";
 import { computeSafetyScore } from "@/lib/safety/score";
-import {
-  COLD,
-  ENV_WEIGHT,
-  coldPoints,
-  gradeForScore,
-  levelForPoints,
-} from "@/lib/safety/weights";
+import { coldPoints } from "@/lib/safety/weights";
 import { nearestHospitalKm } from "./medical";
 import { nearestShelterKm } from "./shelter";
 
@@ -52,8 +46,9 @@ interface SeasonalScenario {
 const SCENARIOS = scenariosJson as Record<string, Record<string, SeasonalScenario>>;
 const ELEVATIONS = elevationsJson as Record<string, number>;
 
-// 한파 곡선·임계값은 weights.ts COLD/coldPoints에 있다 (기상청 한파특보 기준).
-// 여기서는 계절 모드 점수에 후처리로 얹는 일만 한다.
+// 한파 곡선·임계값은 weights.ts COLD/coldPoints에 있고, 감점은 점수 엔진(score.ts)이
+// RiskInput.tminC로 계산한다 — 계절 모드는 시나리오의 최저기온을 입력으로 넘길 뿐이다.
+// (후처리로 얹던 구조는 예보 경로가 축을 통째로 빠뜨리는 원인이었다)
 export { coldPoints };
 
 export interface SeasonalRange {
@@ -68,35 +63,6 @@ type SeasonalPlace = Pick<
   Place,
   "contentId" | "envType" | "sigunguCode" | "lat" | "lng"
 >;
-
-/** 한파 감점을 breakdown에 반영 — score 차감 + weather 소계 + cold 요인 추가 */
-function applyCold(br: RiskBreakdown, tminC: number, envType: Place["envType"]): RiskBreakdown {
-  // 추위도 열 축이므로 환경유형의 heat 가중을 그대로 쓴다 (실내 0.3, 야외 1.0)
-  const pts = Math.round(coldPoints(tminC) * ENV_WEIGHT[envType].heat);
-  if (pts <= 0) return br;
-  const score = Math.max(0, br.score - pts);
-  const tmin = Math.round(tminC * 10) / 10;
-  return {
-    ...br,
-    score,
-    grade: gradeForScore(score),
-    weatherRisk: br.weatherRisk + pts,
-    factors: [
-      ...br.factors,
-      {
-        key: "cold",
-        label: "한파",
-        value: tmin,
-        unit: "℃",
-        threshold: COLD.ADVISORY_C,
-        points: pts,
-        maxPoints: COLD.MAX_POINTS,
-        level: levelForPoints(pts, COLD.MAX_POINTS),
-        description: `이 시기 최저기온 ${tmin}℃ — 한파주의보 기준(−12℃) ${tmin <= COLD.ADVISORY_C ? "이하" : "미만 접근"}`,
-      },
-    ],
-  };
-}
 
 /**
  * 관광지 + 월 → 통상일/궂은날 점수 범위. 시나리오 데이터가 없는 시군이면 null.
@@ -126,14 +92,17 @@ export function seasonalRange(
     emergencyRoomKm,
     ...(shelterKm !== undefined ? { shelterKm } : {}),
   };
+  // 최저기온(tminC)은 점수 엔진의 한파 축 입력이다 — 통상일은 중앙값, 궂은날은 하위 10분위
   const typicalInput: RiskInput = {
     tempC: s.tmaxMed + dz,
+    tminC: s.tminMed + dz,
     rainProbPct: s.wetdayPct,
     windMs: s.windMed,
     ...common,
   };
   const badInput: RiskInput = {
     tempC: s.tmaxP90 + dz,
+    tminC: s.tminP10 + dz,
     rainProbPct: 85,
     rainMm: s.precipP90,
     windMs: s.windP90,
@@ -142,15 +111,7 @@ export function seasonalRange(
 
   return {
     month,
-    typical: applyCold(
-      computeSafetyScore(typicalInput, place, profile),
-      s.tminMed + dz,
-      place.envType,
-    ),
-    bad: applyCold(
-      computeSafetyScore(badInput, place, profile),
-      s.tminP10 + dz,
-      place.envType,
-    ),
+    typical: computeSafetyScore(typicalInput, place, profile),
+    bad: computeSafetyScore(badInput, place, profile),
   };
 }

@@ -179,6 +179,29 @@ describe("getLiveRiskInput — 체감온도(apparentTempC) 반영", () => {
     expect(input.apparentTempC).toBeUndefined();
     expect("apparentTempC" in input).toBe(false);
   });
+
+  it("날씨 응답의 TMN이 input.tminC로 들어간다 — 한파 축 입력", async () => {
+    // 겨울 예보: 낮 최고 -2℃인데 아침 최저는 -11℃. 두 값이 각각
+    // 쾌적층(TCI 열쾌적)과 안전층(한파)의 입력이 된다
+    stubFetchKmaOnly([
+      kmaItem("TMN", "-11", "0600"),
+      kmaItem("TMP", "-2"),
+      kmaItem("POP", "0"),
+      kmaItem("WSD", "2"),
+    ]);
+    // 삼척(sigunguCode 5) — 위 테스트들과 격자 분리
+    const input = await getLiveRiskInput({ ...place, sigunguCode: 5 });
+    expect(input.tempC).toBe(-2);
+    expect(input.tminC).toBe(-11);
+  });
+
+  it("기온 항목이 없으면 input에 tminC가 남지 않는다", async () => {
+    stubFetchKmaOnly([kmaItem("POP", "40"), kmaItem("WSD", "3")]);
+    // 속초(sigunguCode 7) — 격자 분리
+    const input = await getLiveRiskInput({ ...place, sigunguCode: 7 });
+    expect(input.tminC).toBeUndefined();
+    expect("tminC" in input).toBe(false);
+  });
 });
 
 describe("getLiveRiskInput — 산악 격자 실패 시 시군 대표점 폴백", () => {

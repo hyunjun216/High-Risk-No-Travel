@@ -29,6 +29,14 @@ export interface RiskInput {
   tempC: number;
   /** 일 최대 체감온도 ℃ (기상청 여름철 산식) — 없으면 tempC로 폭염 평가 (계절 모드·mock 경로) */
   apparentTempC?: number;
+  /**
+   * 일 최저기온 ℃ — 한파 축(weights.ts COLD) 입력. 없으면 축 비활성(감점 0).
+   *
+   * tempC(최고기온)와 별개 값이라 이중 계상이 아니다 — 쾌적층 TCI는 낮 관광 쾌적을
+   * tempC로 보고, 한파 축은 기상청 한파특보와 같은 아침 최저기온으로 위험을 본다.
+   * (강수를 쾌적 TCI와 안전층 호우로 나눠 보는 것과 같은 층 분리)
+   */
+  tminC?: number;
   /** 강수확률 % */
   rainProbPct: number;
   /** 예상 강수량 mm (선택) */
@@ -55,7 +63,7 @@ export interface RiskInput {
 
 export type RiskFactorKey =
   | "heat" // 폭염
-  | "cold" // 한파 (계절 모드 전용 — 30년 기후 시나리오에서만 계산)
+  | "cold" // 한파 (RiskInput.tminC가 있을 때 — 예보 경로·계절 모드 공통)
   | "rain" // 강수 (관광기후지수 강수 축, 쾌적)
   | "wind" // 바람 (관광기후지수 풍속 축, 쾌적)
   | "sun" // 일조 (하늘상태 SKY 환산 — TCI 일조 축)

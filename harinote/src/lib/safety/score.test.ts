@@ -163,6 +163,29 @@ describe("안전층 — 산불·산사태·응급의료", () => {
     expect(factor(run({ forestFireLevel: 4 }, "indoor"), "forest_fire").points).toBe(general);
   });
 
+  it("한파: tminC 없으면 축 비활성, 한파주의보급이면 요인 발생", () => {
+    expect(run({}).factors.some((f) => f.key === "cold")).toBe(false);
+    // -5℃ 초과는 감점 0이라 요인을 만들지 않는다 (여름에 빈 막대가 서지 않게)
+    expect(run({ tminC: -2 }).factors.some((f) => f.key === "cold")).toBe(false);
+    expect(factor(run({ tminC: -13 }), "cold").points).toBeGreaterThan(0);
+  });
+
+  it("한파는 쾌적층 열쾌적과 별개 축 — 최고기온이 같아도 최저기온이 낮으면 더 깎인다", () => {
+    // TCI 열쾌적은 tempC(낮 최고), 한파는 tminC(아침 최저)를 본다 — 이중 계상이 아니다
+    const mild = run({ tempC: 2, tminC: -3 });
+    const cold = run({ tempC: 2, tminC: -15 });
+    expect(factor(mild, "heat").points).toBe(factor(cold, "heat").points);
+    expect(cold.score).toBeLessThan(mild.score);
+  });
+
+  it("한파 감점·상한은 환경유형 heat 가중을 따른다 (실내 할인)", () => {
+    const outdoor = factor(run({ tminC: -15 }), "cold");
+    const indoor = factor(run({ tminC: -15 }, "indoor"), "cold");
+    expect(indoor.points).toBeLessThan(outdoor.points);
+    // 상한도 함께 줄어야 게이지 비율이 뜻을 갖는다 (thermalMax와 같은 규약)
+    expect(indoor.maxPoints).toBeLessThan(outdoor.maxPoints);
+  });
+
   it("산사태: 비 안 오면 요인 없음, 공식 경보(2)는 요인 발생", () => {
     expect(run({ rainMm: 0 }, "outdoor_mountain").factors.some((f) => f.key === "landslide")).toBe(false);
     expect(run({ landslideLevel: 2 }, "outdoor_mountain").factors.some((f) => f.key === "landslide")).toBe(true);
@@ -230,6 +253,8 @@ describe("점수 일관성 / 등급", () => {
     [{ tempC: 33, pm25: 50 }, "outdoor_general", "with_kids"],
     [{ rainMm: 20, rainProbPct: 85, windMs: 12 }, "outdoor_water", "default"],
     [{ forestFireLevel: 3, windMs: 10 }, "outdoor_mountain", "with_seniors"],
+    [{ tempC: -2, tminC: -14 }, "outdoor_general", "default"], // 한파 활성
+    [{ tempC: -2, tminC: -14 }, "indoor", "with_kids"], // 한파 + 실내 할인
   ];
 
   it("score = 100 − 요인 감점 합, 소계 합 일치 (항상)", () => {
@@ -245,12 +270,14 @@ describe("점수 일관성 / 등급", () => {
 
   it("카테고리 소계 = 해당 요인 points 합", () => {
     const b = run(
-      { tempC: 33, rainMm: 10, rainProbPct: 70, pm25: 50, forestFireLevel: 3, shelterKm: 4 },
+      // tminC로 한파 축까지 켜서 기상 소계가 새 요인을 빠뜨리지 않는지 함께 잠근다
+      { tempC: 2, tminC: -14, rainMm: 10, rainProbPct: 70, pm25: 50, forestFireLevel: 3, shelterKm: 4 },
       "outdoor_mountain",
     );
+    expect(b.factors.some((f) => f.key === "cold")).toBe(true);
     const sum = (keys: RiskFactorKey[]) =>
       b.factors.filter((f) => keys.includes(f.key)).reduce((s, f) => s + f.points, 0);
-    expect(b.weatherRisk).toBe(sum(["heat", "rain", "wind", "pm", "sun"]));
+    expect(b.weatherRisk).toBe(sum(["heat", "cold", "rain", "wind", "pm", "sun"]));
     expect(b.disasterRisk).toBe(sum(["heavy_rain", "forest_fire", "landslide", "shelter"]));
     expect(b.medicalRisk).toBe(sum(["medical"]));
   });

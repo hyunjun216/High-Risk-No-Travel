@@ -20,10 +20,12 @@ import type {
   RiskInput,
 } from "@/lib/safety/types";
 import {
+  COLD,
   ENV_WEIGHT,
   FOREST_FIRE,
   HEAT_SHIFT_FLOOR_C,
   HEAVY_RAIN,
+  coldPoints,
   LANDSLIDE,
   MEDICAL,
   PM_SENSITIVE_MULT,
@@ -141,6 +143,38 @@ export function computeSafetyScore(
     level: levelForPoints(thermalPts, thermalMax),
     description: `${thermalLabel} — ${thermalNote}${prof.heatShiftC > 0 ? " · 동반 민감 기준" : ""} (관광기후지수 열쾌적)`,
   });
+
+  // ── 한파 (기상청 한파특보 기준 — weights.ts COLD) ──
+  // 쾌적층 열쾌적과 입력이 다르다: TCI는 tempC(낮 최고)로 "관광하기 좋은가"를,
+  // 이 축은 tminC(아침 최저)로 "추위가 위험한가"를 본다 — 강수(TCI)와 호우(안전층)를
+  // 나눈 것과 같은 층 분리라 이중 계상이 아니다.
+  // tminC가 없으면 축 비활성(중기예보·mock 경로). 추위도 열 축이라 env.heat를 그대로 쓴다.
+  const coldMult = tuning.coldMult ?? 1;
+  const coldMax = Math.round(COLD.MAX_POINTS * env.heat * coldMult);
+  // 감점은 원값으로 계산하고 표시값만 소수 1자리로 줄인다 — 먼저 반올림하면
+  // 계절 시나리오의 소수 온도가 한파 밴드 경계를 넘나들어 점수가 1점씩 흔들린다
+  const coldPts =
+    input.tminC === undefined
+      ? 0
+      : Math.round(coldPoints(input.tminC) * env.heat * coldMult);
+  const tminC = input.tminC === undefined ? undefined : Math.round(input.tminC * 10) / 10;
+  // 감점 0(한파 기준 미달)이면 요인을 만들지 않는다 — 여름에 "한파 0점" 막대가 서지 않게
+  if (tminC !== undefined && coldPts > 0) {
+    factors.push({
+      key: "cold",
+      label: "한파",
+      value: tminC,
+      unit: "℃",
+      threshold: COLD.ADVISORY_C,
+      points: coldPts,
+      maxPoints: coldMax,
+      level: levelForPoints(coldPts, coldMax),
+      description: `최저기온 ${tminC}℃ — 한파주의보 기준(${COLD.ADVISORY_C}℃) ${
+        tminC <= COLD.ADVISORY_C ? "이하" : "미만 접근"
+      }`,
+    });
+  }
+
   factors.push({
     key: "rain",
     label: "강수",
@@ -198,7 +232,7 @@ export function computeSafetyScore(
     });
   }
 
-  const weatherRisk = thermalPts + rainPts + windPts + pmPts + sunPts;
+  const weatherRisk = thermalPts + coldPts + rainPts + windPts + pmPts + sunPts;
 
   // ── 안전층: 호우 침수·급류 (기상청 호우 특보 severity) ──
   // 강수 불쾌(쾌적 TCI)와 층을 분리 — "강수가 왜 두 번 깎이나"를 제거하고, 위험은

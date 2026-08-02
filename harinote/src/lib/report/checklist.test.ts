@@ -30,6 +30,40 @@ describe("buildChecklist — 항상 포함 항목", () => {
   });
 });
 
+describe("buildChecklist — 한파", () => {
+  const COLD_ITEM = "방한복·핫팩 등 한파 대비하기";
+
+  it("최저기온이 감점 시작점(-5℃) 이하면 방한 항목이 생긴다", () => {
+    const items = buildChecklist(
+      calmInput({ tempC: 15, tminC: -6 }),
+      envPlace(),
+      "default",
+    );
+    expect(items).toContain(COLD_ITEM);
+  });
+
+  it("최저기온이 -5℃를 넘고 낮도 포근하면 방한 항목이 없다", () => {
+    const items = buildChecklist(
+      calmInput({ tempC: 15, tminC: -4 }),
+      envPlace(),
+      "default",
+    );
+    expect(items).not.toContain(COLD_ITEM);
+  });
+
+  it("최저기온이 없는 경로(중기예보)는 열쾌적 값으로 판단한다", () => {
+    expect(buildChecklist(calmInput({ tempC: 10 }), envPlace(), "default")).toContain(COLD_ITEM);
+    expect(buildChecklist(calmInput({ tempC: 11 }), envPlace(), "default")).not.toContain(COLD_ITEM);
+  });
+
+  it("한파 감점이 있으면 반드시 대응 준비물이 있다 — 리포트 계약", () => {
+    // 상세 리포트는 같은 RiskInput으로 감점 막대와 준비물을 만든다.
+    // 막대에 한파가 뜨는데 준비물이 비면 리포트가 자기모순이 된다
+    const input = calmInput({ tempC: -2, tminC: -13 });
+    expect(buildChecklist(input, envPlace(), "default")).toContain(COLD_ITEM);
+  });
+});
+
 describe("buildChecklist — 폭염", () => {
   it("감점 시작점(28℃) 미만인 27.9℃는 폭염 항목이 없다", () => {
     const items = buildChecklist(calmInput({ tempC: 27.9 }), envPlace(), "default");

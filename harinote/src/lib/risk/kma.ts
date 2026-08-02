@@ -24,6 +24,14 @@ const PUBLISH_DELAY_MIN = 10;
 export interface KmaDailyWeather {
   /** 오늘 최고기온 ℃ (TMX, 없으면 남은 시간대 TMP 최댓값) */
   tempC?: number;
+  /**
+   * 일 최저기온 ℃ (TMN, 없으면 남은 시간대 TMP 최솟값) — 한파 축(weights.ts COLD) 입력.
+   *
+   * TMN은 하루 한 번(아침) 제공돼, 오늘을 오후에 조회하면 이미 지나 응답에 없다.
+   * 그때는 남은 시간대 TMP의 최솟값으로 대체한다 — "지금부터 오늘 안에 겪을 최저"라
+   * 방문 판단에는 오히려 이쪽이 맞다. D+1~3은 TMN이 있어 그대로 쓴다.
+   */
+  tminC?: number;
   /** 오늘 강수확률 최댓값 % (POP) */
   rainProbPct?: number;
   /** 오늘 풍속 최댓값 m/s (WSD) */
@@ -162,7 +170,9 @@ export function summarizeDaily(
   }
 
   let tmx: number | undefined;
+  let tmn: number | undefined;
   let tmpMax: number | undefined;
+  let tmpMin: number | undefined;
   let popMax: number | undefined;
   let wsdMax: number | undefined;
   let pcpSum: number | undefined;
@@ -178,9 +188,13 @@ export function summarizeDaily(
       case "TMX":
         if (Number.isFinite(n)) tmx = n;
         break;
+      case "TMN":
+        if (Number.isFinite(n)) tmn = n;
+        break;
       case "TMP":
         if (Number.isFinite(n)) {
           tmpMax = tmpMax === undefined ? n : Math.max(tmpMax, n);
+          tmpMin = tmpMin === undefined ? n : Math.min(tmpMin, n);
           tmpByTime.set(item.fcstTime, n);
         }
         break;
@@ -233,6 +247,8 @@ export function summarizeDaily(
   const weather: KmaDailyWeather = {};
   const tempC = tmx ?? tmpMax;
   if (tempC !== undefined) weather.tempC = tempC;
+  const tminC = tmn ?? tmpMin;
+  if (tminC !== undefined) weather.tminC = tminC;
   if (popMax !== undefined) weather.rainProbPct = popMax;
   if (wsdMax !== undefined) weather.windMs = wsdMax;
   if (pcpSum !== undefined) weather.rainMm = Math.round(pcpSum * 10) / 10;

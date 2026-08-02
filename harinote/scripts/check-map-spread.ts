@@ -29,8 +29,10 @@ const SCENARIOS: Array<{ name: string; input: RiskInput }> = [
     input: { tempC: 34, apparentTempC: 36, rainProbPct: 10, pm25: 30, windMs: 2, sunHours: 9, forestFireLevel: 2, emergencyRoomKm: 0 },
   },
   {
-    name: "겨울 맑음 -5℃",
-    input: { tempC: -5, apparentTempC: -8, rainProbPct: 0, pm25: 20, windMs: 3, sunHours: 8, forestFireLevel: 2, emergencyRoomKm: 0 },
+    // 겨울은 체감온도(apparentTempC)가 없다 — 기상청 여름철 산식이라 kma.ts가 5~9월만 계산한다.
+    // 최고 -2℃ / 최저 -11℃로 낮 쾌적(TCI)과 아침 한파(COLD)를 따로 태운다.
+    name: "겨울 맑음 최고-2℃/최저-11℃",
+    input: { tempC: -2, tminC: -11, rainProbPct: 0, pm25: 20, windMs: 3, sunHours: 8, forestFireLevel: 2, emergencyRoomKm: 0 },
   },
   {
     name: "봄 건조 산불3단계",

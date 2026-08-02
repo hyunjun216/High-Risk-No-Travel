@@ -109,9 +109,13 @@ export function windPoints(windMs: number): number {
  * 기준: 기상청 한파주의보 −12℃ / 한파경보 −15℃ (아침 최저기온).
  *   폭염 커브와 대칭 형태로 두어 더위·추위의 감점 스케일을 맞춘다.
  *
- * ⚠ 한계: 이 축은 seasonal.ts(계절 모드)에만 적용된다. 실시간·단기예보 경로
- *   (오늘~D+3)에는 한파 감점이 없어, 겨울 여행을 3일 안에 조회하면 추위가
- *   점수에 반영되지 않는다. 축 확장은 별도 과제.
+ * 적용: RiskInput.tminC가 있으면 점수 엔진(score.ts)이 계산한다 — 예보 경로는
+ *   기상청 TMN, 계절 모드는 30년 시나리오의 최저기온이 입력이다. tminC를 주지
+ *   않는 경로(mock)는 축이 비활성이다. 후처리가 아니라 축이라 경로가 늘어도
+ *   빠뜨리지 않는다.
+ *
+ * ⚠ 한계: 오늘을 오후에 조회하면 아침 최저(TMN)가 이미 예보에서 빠져 남은
+ *   시간대 TMP 최솟값으로 대체된다 — kma.ts tminC 주석 참조.
  */
 export const COLD = {
   ADVISORY_C: -12,
@@ -554,6 +558,8 @@ export interface SafetyTuning {
   medicalMult?: number;
   /** 대피소 감점 배율 — 표시 상한도 함께 스케일된다 (기본 1) */
   shelterMult?: number;
+  /** 한파 감점 배율 — 표시 상한도 함께 스케일된다 (기본 1). 곡선 크기가 설계값이라 교란 대상 */
+  coldMult?: number;
   /** 환경유형 가중 부분 덮어쓰기 (기본 ENV_WEIGHT). 절제 실험은 전 축을 1로 준다 */
   env?: Partial<Record<PlaceEnvType, Partial<EnvWeight>>>;
 }

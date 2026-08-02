@@ -10,11 +10,15 @@ import type { Profile, RiskFactorKey, RiskInput } from "@/lib/safety/types";
 import type { Place } from "@/lib/tour/types";
 import {
   CHECKLIST_FIRE_LEVEL,
+  COLD,
   HEAT,
   MEDICAL,
   PM25,
   RAIN_WIND,
 } from "@/lib/safety/weights";
+
+/** 이 온도 이하의 열쾌적 감점은 추위 쪽 — 방한 준비물 (ASHRAE 쾌적 하한 근사) */
+const THERMAL_COOL_MAX_C = 10;
 
 export function buildChecklist(
   input: RiskInput,
@@ -29,6 +33,15 @@ export function buildChecklist(
     if (profile === "with_kids" && input.tempC >= HEAT.ADVISORY_C) {
       items.push("아이 컨디션(더위 먹음 신호) 자주 확인하기");
     }
+  }
+
+  // 한파 — 감점 시작점(최저 -5℃)부터. 최저기온이 없는 경로(중기예보·mock)는
+  // 열쾌적 값으로 대신 판단한다 (buildPlanChecklist와 같은 규칙)
+  if (
+    (input.tminC !== undefined && input.tminC <= COLD.RAMP_START_C) ||
+    input.tempC <= THERMAL_COOL_MAX_C
+  ) {
+    items.push("방한복·핫팩 등 한파 대비하기");
   }
 
   // 강수 — 감점 시작점(30%)부터 우산, 60% 이상 수변형은 급류 경고 강화
@@ -97,9 +110,6 @@ export interface PlanChecklistStop {
   riskFactors: { key: RiskFactorKey; value: number }[];
   envType: Place["envType"];
 }
-
-/** 이 온도 이하의 열쾌적 감점은 추위 쪽 — 방한 준비물 (ASHRAE 쾌적 하한 근사) */
-const THERMAL_COOL_MAX_C = 10;
 
 export function buildPlanChecklist(
   stops: PlanChecklistStop[],

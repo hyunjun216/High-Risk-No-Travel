@@ -106,6 +106,9 @@ export async function getLiveRiskInput(
       w.windMs !== undefined;
     if (hasCore) {
       if (w.tempC !== undefined) input.tempC = w.tempC;
+      // 최저기온(한파 축) — 없으면 삭제해 mock 잔존값이 안 섞이게 (rainMm과 같은 패턴)
+      if (w.tminC !== undefined) input.tminC = w.tminC;
+      else delete input.tminC;
       if (w.rainProbPct !== undefined) input.rainProbPct = w.rainProbPct;
       if (w.windMs !== undefined) input.windMs = w.windMs;
       // 실예보가 "강수없음"이면 mock의 rainMm도 제거 — 날씨 필드는 통째로 실데이터화
@@ -167,6 +170,9 @@ export async function getForecastRiskInput(
 
   const input = await getLiveRiskInput(place);
   if (w.tempC !== undefined) input.tempC = w.tempC;
+  // 오늘 기준으로 채워진 최저기온을 대상 날짜 예보로 교체 (없으면 삭제 — 한파 축 비활성)
+  if (w.tminC !== undefined) input.tminC = w.tminC;
+  else delete input.tminC;
   if (w.rainProbPct !== undefined) input.rainProbPct = w.rainProbPct;
   if (w.windMs !== undefined) input.windMs = w.windMs;
   if (w.rainMm !== undefined) input.rainMm = w.rainMm;

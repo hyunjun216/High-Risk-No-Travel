@@ -117,6 +117,7 @@ describe("summarizeDaily", () => {
     ];
     expect(summarizeDaily(items, "20260703")).toEqual({
       tempC: 33,
+      tminC: 28, // TMN 없음 → 남은 시간대 TMP 최솟값
       rainProbPct: 80,
       windMs: 7.2,
       rainMm: 45, // 5.0mm + 범위 중간값 40
@@ -126,6 +127,30 @@ describe("summarizeDaily", () => {
   it("TMX가 없으면 남은 시간대 TMP 최댓값", () => {
     const items = [item("TMP", "24"), item("TMP", "27", "20260703", "1600")];
     expect(summarizeDaily(items, "20260703").tempC).toBe(27);
+  });
+
+  it("TMN이 있으면 tminC는 TMN — TMP 최솟값보다 우선", () => {
+    const items = [
+      item("TMN", "-11.0", "20260115", "0600"),
+      item("TMP", "-3", "20260115", "1200"),
+      item("TMP", "-7", "20260115", "2100"),
+    ];
+    // TMP 최솟값(-7)이 아니라 아침 최저(TMN -11)가 한파 축 입력이 된다
+    expect(summarizeDaily(items, "20260115").tminC).toBe(-11);
+  });
+
+  it("TMN이 없으면(오늘 오후 조회) 남은 시간대 TMP 최솟값", () => {
+    const items = [
+      item("TMP", "-3", "20260115", "1500"),
+      item("TMP", "-7", "20260115", "2100"),
+    ];
+    // 아침 최저는 이미 지나 예보에 없다 — "지금부터 겪을 최저"로 대체
+    expect(summarizeDaily(items, "20260115").tminC).toBe(-7);
+  });
+
+  it("기온 항목이 하나도 없으면 tminC는 undefined", () => {
+    const items = [item("POP", "40"), item("WSD", "2.0")];
+    expect(summarizeDaily(items, "20260703").tminC).toBeUndefined();
   });
 
   it("전부 강수없음이면 rainMm은 undefined", () => {
