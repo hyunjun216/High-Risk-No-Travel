@@ -16,9 +16,9 @@ import type { Alternative } from "@/lib/reco/alternatives";
 import { CAT3_CAFE } from "@/lib/tour/types";
 import {
   COURSE_ANCHOR_SWITCH_MIN_GAIN,
-  COURSE_MIN_STOP_SCORE,
   RECO_WEATHER_RISK_INDOOR_THRESHOLD,
 } from "@/lib/safety/weights";
+import { meetsCourseSafety } from "@/lib/safety/layers";
 import { haversineKm } from "@/lib/reco/distance";
 
 export interface CourseStop {
@@ -87,7 +87,7 @@ function pickLunch(
     // 점심 슬롯은 식사 목적 — 카페/전통찻집(A05020900)은 제외
     if (c.cat3 === CAT3_CAFE) continue;
     if (excludeIds.has(c.contentId)) continue;
-    if (c.safety.score < COURSE_MIN_STOP_SCORE) continue;
+    if (!meetsCourseSafety(c.safety)) continue;
     const km = haversineKm(anchor.lat, anchor.lng, c.lat, c.lng);
     if (km > LUNCH_RADIUS_KM * radiusScale) continue;
     if (
@@ -122,7 +122,7 @@ function pickAfternoon(
   for (const c of candidates) {
     if (c.contentTypeId !== 12 && c.contentTypeId !== 14) continue;
     if (excludeIds.has(c.contentId)) continue;
-    if (c.safety.score < COURSE_MIN_STOP_SCORE) continue;
+    if (!meetsCourseSafety(c.safety)) continue;
     const km = haversineKm(from.lat, from.lng, c.lat, c.lng);
     if (km > AFTERNOON_RADIUS_KM * radiusScale) continue;
 
@@ -154,7 +154,7 @@ export function buildHalfDayCourse(
   const { anchor, anchoredOnAlternative } = pickAnchor(target, alternatives);
 
   // 앵커 자체가 60점 미만이면 코스 기준점이 없다 — 코스 생성 불가
-  if (anchor.safety.score < COURSE_MIN_STOP_SCORE) return null;
+  if (!meetsCourseSafety(anchor.safety)) return null;
 
   // 앵커·target은 다른 슬롯에 재등장 금지 (대체지 전환 시 위험한 target 재추천 방지)
   const excludeIds = new Set([anchor.contentId, target.contentId]);

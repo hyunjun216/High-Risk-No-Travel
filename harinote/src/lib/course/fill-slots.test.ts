@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import type { PlaceWithSafety } from "@/lib/datasource";
-import type { RiskBreakdown, RiskLevel } from "@/lib/safety/types";
+import type { RiskBreakdown, RiskFactor, RiskFactorKey, RiskLevel } from "@/lib/safety/types";
 import { fillPlanSlots, type FillAnchor } from "@/lib/course/fill-slots";
 import { CAR_COURSE_RADIUS_SCALE } from "@/lib/course/themed";
 
@@ -14,14 +14,24 @@ function gradeFor(score: number): RiskLevel {
   return score >= 70 ? "low" : score >= 40 ? "moderate" : "high";
 }
 
+/** 감점을 층에 실어 주는 요인 mock — meetsCourseSafety가 factors를 읽는다 */
+function mockFactor(key: RiskFactorKey, points: number): RiskFactor {
+  return {
+    key, label: key, value: 0, unit: "", threshold: 0,
+    points, maxPoints: 80, level: "low", description: "",
+  };
+}
+
 function makeSafety(score: number): RiskBreakdown {
+  // 코스 자격(meetsCourseSafety)은 총점이 아니라 factors의 안전층 합을 본다
+  const safetyPts = Math.max(0, 100 - score);
   return {
     score,
     grade: gradeFor(score),
     profile: "default",
-    factors: [],
+    factors: safetyPts > 0 ? [mockFactor("forest_fire", safetyPts)] : [],
     weatherRisk: 0,
-    disasterRisk: 0,
+    disasterRisk: safetyPts,
     medicalRisk: 0,
   };
 }

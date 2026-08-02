@@ -12,15 +12,15 @@
  * - 저녁: 직전 스톱 반경 10km 음식점(카페 제외) — 점심과 같은 규칙
  * - 숙소(마지막 일차 제외): 그날 마지막 스톱 반경 15km, 최근접 5곳 중
  *   (안전점수+사진 우대) 최고. 앵커 숙소가 있으면 그것이 다음 날 기준점
- * - 모든 스톱은 안전점수 COURSE_MIN_STOP_SCORE(60) 이상 + 대안 최대 2개
+ * - 모든 스톱은 **안전층 감점만으로** 최소 점수(60) 이상 — meetsCourseSafety. 대안 최대 2개
  */
 import type { PlaceWithSafety } from "@/lib/datasource";
 import { CAT3_CAFE } from "@/lib/tour/types";
 import type { PlanSlot } from "@/lib/travel-plan";
 import {
-  COURSE_MIN_STOP_SCORE,
   RECO_WEATHER_RISK_INDOOR_THRESHOLD,
 } from "@/lib/safety/weights";
+import { meetsCourseSafety } from "@/lib/safety/layers";
 import { haversineKm } from "@/lib/reco/distance";
 import {
   AFTERNOON_RADIUS_KM,
@@ -227,7 +227,7 @@ export function fillPlanSlots(opts: {
     const anchorPoint = last;
     const nearby = (lodgingsByDay[d] ?? [])
       .filter(
-        (l) => !used.has(l.contentId) && l.safety.score >= COURSE_MIN_STOP_SCORE,
+        (l) => !used.has(l.contentId) && meetsCourseSafety(l.safety),
       )
       .map((l) => ({
         place: l,

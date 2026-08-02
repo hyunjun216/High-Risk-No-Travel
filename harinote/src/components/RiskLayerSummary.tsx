@@ -1,5 +1,5 @@
 import { RISK_LAYERS, type RiskFactor } from "@/lib/safety/types";
-import { layerTotals } from "@/components/risk-layer";
+import { layerTotals } from "@/lib/safety/layers";
 
 /**
  * 감점을 쾌적/안전 두 층으로 갈라 보여주는 한 줄 — 상세·숙박상세·리포트 공용.

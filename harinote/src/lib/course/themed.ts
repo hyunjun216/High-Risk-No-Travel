@@ -11,7 +11,7 @@
  *   (동점이면 contentId 오름차순 — 일관 규칙)
  * - 점심: 앵커 반경 10km 내 음식점(39), 오후: 직전 스톱 반경 15km 내 관광지(12)·문화시설(14)
  *   — 점심·오후는 시군 경계를 넘어도 반경 내면 허용
- * - 모든 스톱·대안은 안전점수 COURSE_MIN_STOP_SCORE(60) 이상만
+ * - 모든 스톱·대안은 **안전층 감점만으로** 최소 점수(60) 이상만 — meetsCourseSafety
  * - 대안(alternates)은 같은 슬롯 선정 조건(반경·유형)의 차순위 후보 최대 2개,
  *   앵커·다른 스톱·다른 대안과 중복 금지
  * - 테마 매칭 앵커가 없거나 스톱이 2개 미만이면 그 테마는 null
@@ -20,9 +20,9 @@ import type { PlaceWithSafety } from "@/lib/datasource";
 import { CAT3_CAFE, type PlaceEnvType } from "@/lib/tour/types";
 import type { RiskLevel } from "@/lib/safety/types";
 import {
-  COURSE_MIN_STOP_SCORE,
   RECO_WEATHER_RISK_INDOOR_THRESHOLD,
 } from "@/lib/safety/weights";
+import { meetsCourseSafety } from "@/lib/safety/layers";
 import { haversineKm } from "@/lib/reco/distance";
 import { CURATED_PLACES } from "@/lib/curation";
 
@@ -139,7 +139,7 @@ export function selectTopCandidates(
   const ranked: { place: PlaceWithSafety; score: number; km: number }[] = [];
   for (const c of candidates) {
     if (used.has(c.contentId)) continue;
-    if (c.safety.score < COURSE_MIN_STOP_SCORE) continue;
+    if (!meetsCourseSafety(c.safety)) continue;
     const rank = rankOf(c);
     if (rank === null) continue;
     ranked.push({ place: c, ...rank });
