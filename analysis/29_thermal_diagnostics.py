@@ -35,6 +35,27 @@ for label, controls in SPECS:
     w = m.wald_test(np.eye(len(m.params))[idx], scalar=True)
     print(f"{label:<34} 스플라인 p = {w.pvalue:.4g}")
 
+# ── ④ 노출 분모가 들어오면 켜지는 스펙 ──
+# 월 FE는 계절 노출과 계절 기온을 함께 흡수한다(위 ①②). 방문자수를 offset으로 넣으면
+# 노출만 통제하고 계절 기온 변동은 남길 수 있다 — 이게 30번이 지목한 유일한 해법이다.
+if "visitors" in df.columns and df["visitors"].notna().any():
+    sub = df[df["visitors"].notna() & (df["visitors"] > 0)].copy()
+    sub["log_exposure"] = np.log(sub["visitors"])
+    f4 = ("acc_outdoor ~ bs(tmax, df=5) + precip + wind_ms + is_weekend "
+          "+ C(sigungu) + C(year)")
+    m4 = smf.glm(f4, data=sub, family=sm.families.Poisson(),
+                 offset=sub["log_exposure"]).fit(
+        cov_type="cluster", cov_kwds={"groups": sub["sigungu"]}
+    )
+    terms = [n for n in m4.params.index if n.startswith("bs(tmax")]
+    idx = [m4.params.index.get_loc(t) for t in terms]
+    w4 = m4.wald_test(np.eye(len(m4.params))[idx], scalar=True)
+    print(f"{'④ 시군FE + 연FE + offset(log 방문자수)':<34} 스플라인 p = {w4.pvalue:.4g}")
+    print("   → 월 FE 없이 노출만 통제. 여기서 유의하면 기온 배점을 실증 보정할 수 있다")
+else:
+    print(f"{'④ offset(log 방문자수)':<34} 건너뜀 — data/visitors_monthly.csv 없음")
+    print("   → 이 스펙이 켜져야 기온 배점 보정이 가능하다 (docs/API키_발급_가이드.md §3.6)")
+
 # ── 과대산포 대응: 음이항 ──
 print("\n[과대산포 대응] 음이항(NB2) — 포아송 대비 표준오차가 커진다")
 f = "acc_outdoor ~ bs(tmax, df=5) + precip + wind_ms + is_weekend + C(sigungu) + C(ym)"
