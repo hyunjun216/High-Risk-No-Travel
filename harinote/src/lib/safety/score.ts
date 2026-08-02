@@ -94,7 +94,7 @@ export function computeSafetyScore(
     // (근거: analysis/NOTE_민감층_임계값.md, EPA AQI USG). 배점은 그대로 둔다.
     pmSensitive: prof.pmSensitive,
     sunHours: input.sunHours, // 하늘상태(SKY) 환산 — 없으면 TCI가 4축 재정규화
-  });
+  }, tuning.tciWeights);
 
   // envType·프로필로 변조 (실내 할인·계곡 강수 가중·미먼 민감군).
   // 표시 상한도 같은 계수를 곱한다 — "이 장소에서 이 축이 최대로 깎을 수 있는 점수"라야

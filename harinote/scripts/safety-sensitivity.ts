@@ -22,6 +22,7 @@ import {
   type EnvWeight,
   type SafetyTuning,
 } from "../src/lib/safety/weights";
+import { TCI_WEIGHTS } from "../src/lib/safety/tci";
 import type { RiskInput, RiskLevel } from "../src/lib/safety/types";
 import type { PlaceEnvType } from "../src/lib/tour/types";
 
@@ -266,7 +267,15 @@ export function buildPerturbations(): Perturbation[] {
       isActive: () => true,
     });
 
-    // ── Tier B: envType 배율 (근거 = 방향만 탐색적, 크기는 설계값) ──
+    // ── Tier B: 설계값 가중·배율 (근거 = 방향만 탐색적이거나, 크기가 설계값) ──
+    // 미세먼지 축 가중 22%는 KTCI에 없는 우리 확장이라 근거가 없다. 가중은 합으로
+    // 재정규화되므로 pm을 올리면 나머지 4축이 그만큼 줄어든다 — 축 간 배분 자체의 교란
+    out.push({
+      tier: "B",
+      name: `미세먼지 축 가중 22% ${pct}`,
+      tuning: { tciWeights: { ...TCI_WEIGHTS, pm: TCI_WEIGHTS.pm * f } },
+      isActive: () => true,
+    });
     out.push({
       tier: "B",
       name: `계곡·수변 강수 ×1.5 ${pct}`,

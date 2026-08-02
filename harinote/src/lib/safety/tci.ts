@@ -6,7 +6,8 @@
  * - 박창용 외(2014) 치악산 TCI 연구: 강수·일조·바람 변환표 원문
  * - 김남조 외 한국형 KTCI: 4계절 통합 실증 가중치(최고기온25.9·평균기온20.9·
  *   강수32.2·풍속11.6·구름9.5%) → 원 40/10/20/20/10 대체
- * - 미세먼지(pm)는 KTCI에 없는 우리 확장(가중 15%, 환경부 PM 등급 근거)
+ * - 미세먼지(pm)는 KTCI에 없는 우리 확장 — 등급 경계는 환경부 기준이지만
+ *   가중(22%)은 설계값이다. 정확한 구성은 TCI_WEIGHTS 주석 참조
  *
  * 설계 메모(정직):
  * - Cid/Cia(열쾌적) ASHRAE 격자표는 원문 그림이라 텍스트 미확보 → 우리가 이미
@@ -122,9 +123,17 @@ export interface TciInput {
 }
 
 /**
- * KTCI(한국형) + 미세먼지 가중. 합=1.
- * 열쾌적은 KTCI 최고기온25.9+평균기온20.9≈46.8을 하나로 합쳐 반영,
- * 미세먼지 15%를 얹고 전체를 재정규화한 값.
+ * KTCI(한국형) 실증가중 + 미세먼지 확장. 합=1.
+ *
+ * 구성 방식: **미세먼지 22%를 먼저 떼고, 남은 78%를 KTCI 원가중 비율로 나눈다.**
+ *   KTCI 원가중(김남조 외) = 최고기온 25.9 + 평균기온 20.9 ≈ 46.8(열쾌적) ·
+ *   강수 32.2 · 풍속 11.6 · 구름 9.5 (합 100.1)
+ *   → 0.78 × 46.8/100.1 = 0.365 → 0.36 · 32.2/100.1 → 0.25 · 11.6/100.1 → 0.09 ·
+ *     9.5/100.1 = 0.074 → 0.08 (합이 정확히 1이 되도록 일조만 올림)
+ *
+ * ⚠ **22%는 설계값이다**(analysis/25_safety_evidence_map.md ❌). KTCI에 없는 축이라
+ *   실증 근거가 없고, 한국의 황사·미세먼지 비중을 반영한 판단이다. 축의 등급 경계
+ *   (15/35/75)만 환경부 기준으로 확실하다. 축 간 상대가중은 KTCI 비율을 보존한다.
  */
 export const TCI_WEIGHTS = {
   thermal: 0.36, // KTCI 열쾌적(주간+일) → 체감온도 브리지
@@ -137,6 +146,8 @@ export const TCI_WEIGHTS = {
 /** 축 키 — 가중·정의역·계산 순회의 단일 목록 */
 const AXES = ["thermal", "rain", "pm", "wind", "sun"] as const;
 type Axis = (typeof AXES)[number];
+/** 축 가중 — 민감도 분석이 설계값(pm 22%)을 교란할 때 덮어쓴다 */
+export type TciWeights = Record<Axis, number>;
 
 /**
  * 각 세부지수의 정의역. 열쾌적만 음수까지 간다 — Mieczkowski TCI의 세부지수가
@@ -175,15 +186,15 @@ function rawScores(input: TciInput): Record<Axis, number | undefined> {
  * 관광기후지수 0~100. 각 세부점수를 정의역으로 정규화해 가중합.
  * 일조·풍속 미제공 시 해당 가중을 빼고 나머지를 재정규화(정보 없는 축이 불이익 주지 않게).
  */
-export function computeTci(input: TciInput): number {
+export function computeTci(input: TciInput, weights: TciWeights = TCI_WEIGHTS): number {
   const s = rawScores(input);
   let wSum = 0;
   let acc = 0;
   for (const axis of AXES) {
     const score = s[axis];
     if (score === undefined) continue; // 일조·풍속 결측 → 제외 후 재정규화
-    acc += TCI_WEIGHTS[axis] * normalize(axis, score);
-    wSum += TCI_WEIGHTS[axis];
+    acc += weights[axis] * normalize(axis, score);
+    wSum += weights[axis];
   }
   return Math.round(wSum > 0 ? (acc / wSum) * 100 : 0);
 }
@@ -205,19 +216,22 @@ export interface TciBreakdown {
  * TCI + 축별 감점 분해.
  * 축 감점 = 배점 × (1 − 정규화점수) → 정의상 0~배점 안에 들어오고, 합이 100−tci와 같다.
  */
-export function computeTciBreakdown(input: TciInput): TciBreakdown {
+export function computeTciBreakdown(
+  input: TciInput,
+  weights: TciWeights = TCI_WEIGHTS,
+): TciBreakdown {
   const raw = rawScores(input);
   let wSum = 0;
-  for (const axis of AXES) if (raw[axis] !== undefined) wSum += TCI_WEIGHTS[axis];
+  for (const axis of AXES) if (raw[axis] !== undefined) wSum += weights[axis];
 
   const deductions = { thermal: 0, rain: 0, pm: 0, wind: 0, sun: 0 };
   const shares = { thermal: 0, rain: 0, pm: 0, wind: 0, sun: 0 };
   for (const axis of AXES) {
     const s = raw[axis];
     if (s === undefined || wSum === 0) continue;
-    const share = (TCI_WEIGHTS[axis] / wSum) * 100;
+    const share = (weights[axis] / wSum) * 100;
     shares[axis] = share;
     deductions[axis] = share * (1 - normalize(axis, s));
   }
-  return { tci: computeTci(input), deductions, shares };
+  return { tci: computeTci(input, weights), deductions, shares };
 }

@@ -18,6 +18,8 @@
  */
 import type { Profile, RiskLevel } from "@/lib/safety/types";
 import type { PlaceEnvType } from "@/lib/tour/types";
+// 타입만 가져온다 — 쾌적층 가중의 소유자는 tci.ts다(이 파일 헤더 참조)
+import type { TciWeights } from "@/lib/safety/tci";
 
 // ─────────────────────────────────────────────
 // 폭염 (상한 25)
@@ -550,6 +552,12 @@ export interface SafetyTuning {
   shelterMult?: number;
   /** 한파 감점 배율 — 표시 상한도 함께 스케일된다 (기본 1). 곡선 크기가 설계값이라 교란 대상 */
   coldMult?: number;
+  /**
+   * 쾌적층 축 가중 덮어쓰기 (기본 tci.ts TCI_WEIGHTS).
+   * 미세먼지 22%가 KTCI에 없는 설계값이라, 그 값이 등급을 바꾸는지 재려면 필요하다.
+   * 가중은 합으로 재정규화되므로 한 축을 올리면 나머지가 그만큼 줄어든다.
+   */
+  tciWeights?: TciWeights;
   /** 환경유형 가중 부분 덮어쓰기 (기본 ENV_WEIGHT). 절제 실험은 전 축을 1로 준다 */
   env?: Partial<Record<PlaceEnvType, Partial<EnvWeight>>>;
 }
