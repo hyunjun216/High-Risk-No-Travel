@@ -3,3 +3,8 @@ data/climate_daily_raw/
 *.parquet
 *.joblib
 __pycache__/
+.venv/
+
+# 일별 패널 원본·중간산출 (재생성: 26_collect_weather_panel.py → 27_build_daily_panel.py)
+data/climate_panel_raw/
+data/daily_panel.csv
