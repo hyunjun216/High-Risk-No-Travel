@@ -9,7 +9,7 @@
  * 순수 함수 summarizeRegions는 테스트에서 직접 호출한다.
  */
 import type { Profile, RiskFactor, RiskLevel } from "@/lib/safety/types";
-import { gradeForScore, levelForPoints, MEDICAL } from "@/lib/safety/weights";
+import { gradeForScore, levelForPoints, LANDSLIDE, MEDICAL } from "@/lib/safety/weights";
 import { SIGUNGU_SEATS } from "@/lib/risk/regions";
 import {
   getPlacesWithSafety,
@@ -45,12 +45,8 @@ export interface RegionSummary {
   landslideExposurePct: number;
 }
 
-/**
- * 시군 산사태 감점 상한(점) — 노출 비율×이 값. 최악 1곳(45/80)을 헤드라인에 박아
- * 전 지역이 침몰하는 걸 막고, 산악 밀집 시군일수록 소폭 더 깎이는 차등만 준다.
- * 실측(analysis): 50mm 강수 시 인제 61%→-9, 강릉 2%→0 등 스프레드 확인.
- */
-const LANDSLIDE_REGION_CAP = 15;
+/** 시군 산사태 감점 상한 — 근거·실측은 weights.ts LANDSLIDE.REGION_CAP 참조 */
+const LANDSLIDE_REGION_CAP = LANDSLIDE.REGION_CAP;
 
 /** 정렬된 배열의 중앙값 — 짝수 개면 가운데 두 값 평균을 반올림 */
 function median(sorted: number[]): number {

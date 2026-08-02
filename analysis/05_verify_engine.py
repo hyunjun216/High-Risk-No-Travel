@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
 # 05_verify_engine.py — 포팅한 엔진이 원본(vitest score.test.ts)의 경계 속성을 재현하는지 검증
+#
+# ⚠️ 이 검증은 2026-07-10 시점(v1) 기준이다. safety_engine.py 헤더 참조 —
+#    현행 엔진은 산불 밴드·산사태 축·쾌적층 구조가 모두 다르므로, 여기서 20/20이
+#    통과하는 것이 "현행 엔진과 일치"를 뜻하지 않는다.
 from safety_engine import compute_safety_score
 
 CLEAR = {"tempC": 24, "rainProbPct": 10, "windMs": 2, "pm25": 10,

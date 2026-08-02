@@ -14,7 +14,13 @@ import elevationsJson from "@/data/elevations.json";
 import type { Place } from "@/lib/tour/types";
 import type { Profile, RiskBreakdown, RiskInput } from "@/lib/safety/types";
 import { computeSafetyScore } from "@/lib/safety/score";
-import { gradeForScore, levelForPoints } from "@/lib/safety/weights";
+import {
+  COLD,
+  ENV_WEIGHT,
+  coldPoints,
+  gradeForScore,
+  levelForPoints,
+} from "@/lib/safety/weights";
 import { nearestHospitalKm } from "./medical";
 import { nearestShelterKm } from "./shelter";
 
@@ -46,16 +52,9 @@ interface SeasonalScenario {
 const SCENARIOS = scenariosJson as Record<string, Record<string, SeasonalScenario>>;
 const ELEVATIONS = elevationsJson as Record<string, number>;
 
-/**
- * 한파 감점 — 점수 엔진에 없는 요인이라 별도 계산 후 차감 (16b cold_points 동일).
- * 한파주의보 −12℃ / 경보 −15℃ 기준, 폭염 커브와 대칭 형태.
- */
-export function coldPoints(tempC: number): number {
-  if (tempC > -5) return 0;
-  if (tempC > -12) return ((-5 - tempC) / 7) * 8;
-  if (tempC > -15) return 12 + (-12 - tempC) * (10 / 3);
-  return Math.min(25, 22 + (-15 - tempC) * 1.5);
-}
+// 한파 곡선·임계값은 weights.ts COLD/coldPoints에 있다 (기상청 한파특보 기준).
+// 여기서는 계절 모드 점수에 후처리로 얹는 일만 한다.
+export { coldPoints };
 
 export interface SeasonalRange {
   month: number;
@@ -72,7 +71,8 @@ type SeasonalPlace = Pick<
 
 /** 한파 감점을 breakdown에 반영 — score 차감 + weather 소계 + cold 요인 추가 */
 function applyCold(br: RiskBreakdown, tminC: number, envType: Place["envType"]): RiskBreakdown {
-  const pts = Math.round(coldPoints(tminC) * (envType === "indoor" ? 0.3 : 1));
+  // 추위도 열 축이므로 환경유형의 heat 가중을 그대로 쓴다 (실내 0.3, 야외 1.0)
+  const pts = Math.round(coldPoints(tminC) * ENV_WEIGHT[envType].heat);
   if (pts <= 0) return br;
   const score = Math.max(0, br.score - pts);
   const tmin = Math.round(tminC * 10) / 10;
@@ -88,11 +88,11 @@ function applyCold(br: RiskBreakdown, tminC: number, envType: Place["envType"]):
         label: "한파",
         value: tmin,
         unit: "℃",
-        threshold: -12,
+        threshold: COLD.ADVISORY_C,
         points: pts,
-        maxPoints: 25,
-        level: levelForPoints(pts, 25),
-        description: `이 시기 최저기온 ${tmin}℃ — 한파주의보 기준(−12℃) ${tmin <= -12 ? "이하" : "미만 접근"}`,
+        maxPoints: COLD.MAX_POINTS,
+        level: levelForPoints(pts, COLD.MAX_POINTS),
+        description: `이 시기 최저기온 ${tmin}℃ — 한파주의보 기준(−12℃) ${tmin <= COLD.ADVISORY_C ? "이하" : "미만 접근"}`,
       },
     ],
   };

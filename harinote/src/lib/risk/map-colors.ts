@@ -3,22 +3,13 @@
  * 지도(RegionRiskMapInner)와 범례(RegionDashboard)가 같은 색을 쓰도록 단일 정의.
  */
 import type { RiskLevel } from "@/lib/safety/types";
+import { GRADE_SCORE_RANGE } from "@/lib/safety/weights";
 
 /** 등급별 색상(hue·채도) — SafetyScoreBadge의 emerald/amber/red 체계와 정렬 */
 export const GRADE_HSL: Record<RiskLevel, { h: number; s: number }> = {
   low: { h: 158, s: 64 }, // emerald 계열
   moderate: { h: 38, s: 90 }, // amber 계열
   high: { h: 2, s: 78 }, // red 계열
-};
-
-/**
- * 등급별 점수 구간 — 이 범위 안에서 색을 편다.
- * gradeForScore(weights.ts)의 컷(70 이상 low, 40~69 moderate, 40 미만 high)과 일치.
- */
-const GRADE_SCORE_RANGE: Record<RiskLevel, [number, number]> = {
-  low: [70, 100],
-  moderate: [40, 70],
-  high: [0, 40],
 };
 
 /**

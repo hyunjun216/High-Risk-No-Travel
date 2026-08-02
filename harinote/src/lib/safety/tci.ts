@@ -122,61 +122,90 @@ export const TCI_WEIGHTS = {
   sun: 0.08, // KTCI 구름/일사 9.5%
 } as const;
 
+/** 축 키 — 가중·정의역·계산 순회의 단일 목록 */
+const AXES = ["thermal", "rain", "pm", "wind", "sun"] as const;
+type Axis = (typeof AXES)[number];
+
 /**
- * 관광기후지수 0~100. 각 세부점수(-3~5)를 (s/5)로 정규화해 가중합 후 0~100 스케일.
- * 일조·풍속 미제공 시 해당 가중을 빼고 나머지를 재정규화(정보 없는 축이 불이익 주지 않게).
+ * 각 세부지수의 정의역. 열쾌적만 음수까지 간다 — Mieczkowski TCI의 세부지수가
+ * -3~5이고, 고온다습·혹한을 "쾌적의 부재"가 아니라 "불쾌"로 표현하기 때문이다.
+ * 나머지 축(강수·미먼·바람·일조)은 0이 바닥이다.
+ *
+ * 감점을 이 정의역으로 정규화해야 축 간 스케일이 맞는다. 전부 5로 나누면 열쾌적은
+ * 음수 구간에서 배점을 넘어 잘리고(게이지 100% 초과), 잘린 뒤로는 더 더워져도
+ * 감점이 안 늘어 민감층 차등이 사라진다.
  */
-export function computeTci(input: TciInput): number {
-  const s = {
+const SCORE_RANGE: Record<Axis, { min: number; max: number }> = {
+  thermal: { min: -3, max: 5 },
+  rain: { min: 0, max: 5 },
+  pm: { min: 0, max: 5 },
+  wind: { min: 0, max: 5 },
+  sun: { min: 0, max: 5 },
+};
+
+/** 세부점수 → 0(최악)~1(이상적) */
+function normalize(axis: Axis, score: number): number {
+  const { min, max } = SCORE_RANGE[axis];
+  return Math.max(0, Math.min(1, (score - min) / (max - min)));
+}
+
+function rawScores(input: TciInput): Record<Axis, number | undefined> {
+  return {
     thermal: thermalScore(input.feelsC),
     rain: rainScore(input.rainMmDaily, input.rainProbPct),
     pm: pmScore(input.pm25),
     wind: input.windMs !== undefined ? windScore(input.windMs) : undefined,
     sun: input.sunHours !== undefined ? sunScore(input.sunHours) : undefined,
   };
+}
 
+/**
+ * 관광기후지수 0~100. 각 세부점수를 정의역으로 정규화해 가중합.
+ * 일조·풍속 미제공 시 해당 가중을 빼고 나머지를 재정규화(정보 없는 축이 불이익 주지 않게).
+ */
+export function computeTci(input: TciInput): number {
+  const s = rawScores(input);
   let wSum = 0;
   let acc = 0;
-  for (const key of ["thermal", "rain", "pm", "wind", "sun"] as const) {
-    const score = s[key];
+  for (const axis of AXES) {
+    const score = s[axis];
     if (score === undefined) continue; // 일조·풍속 결측 → 제외 후 재정규화
-    const w = TCI_WEIGHTS[key];
-    acc += w * (score / 5);
-    wSum += w;
+    acc += TCI_WEIGHTS[axis] * normalize(axis, score);
+    wSum += TCI_WEIGHTS[axis];
   }
-  const norm = wSum > 0 ? acc / wSum : 0; // -0.6 ~ 1.0
-  return Math.round(Math.max(0, Math.min(100, norm * 100)));
+  return Math.round(wSum > 0 ? (acc / wSum) * 100 : 0);
 }
 
 /** 축별 감점(이상값 대비 부족분) — score.ts의 요인 표시용. thermal은 체감온도, rain·wind 분리. */
 export interface TciBreakdown {
   tci: number;
-  /** 각 축이 100점 만점에서 깎은 양(0~축배점). 합은 대략 100−tci (음수 점수는 배점상한에서 clamp). */
-  deductions: { thermal: number; rain: number; pm: number; wind: number; sun: number };
+  /** 각 축이 100점 만점에서 깎은 양(0~해당 축 배점). 합 = 100 − tci */
+  deductions: Record<Axis, number>;
+  /**
+   * 각 축의 배점 = 정규화 가중 × 100. 결측 축이 있으면 나머지가 그만큼 커진다.
+   * score.ts가 요인 표시 상한(maxPoints)으로 쓴다 — 정적 상수를 쓰면 재정규화된
+   * 배점을 넘겨 게이지가 100%를 초과한다.
+   */
+  shares: Record<Axis, number>;
 }
 
 /**
- * TCI + 축별 감점 분해. 각 축 감점 = 정규화가중 × (5−점수)/5 × 100,
- * 0~해당 축 배점으로 clamp(음수 점수가 배점을 넘겨도 표시 상한은 배점).
+ * TCI + 축별 감점 분해.
+ * 축 감점 = 배점 × (1 − 정규화점수) → 정의상 0~배점 안에 들어오고, 합이 100−tci와 같다.
  */
 export function computeTciBreakdown(input: TciInput): TciBreakdown {
-  const raw: Record<keyof TciBreakdown["deductions"], number | undefined> = {
-    thermal: thermalScore(input.feelsC),
-    rain: rainScore(input.rainMmDaily, input.rainProbPct),
-    pm: pmScore(input.pm25),
-    wind: input.windMs !== undefined ? windScore(input.windMs) : undefined,
-    sun: input.sunHours !== undefined ? sunScore(input.sunHours) : undefined,
-  };
+  const raw = rawScores(input);
   let wSum = 0;
-  for (const k of ["thermal", "rain", "pm", "wind", "sun"] as const) {
-    if (raw[k] !== undefined) wSum += TCI_WEIGHTS[k];
-  }
+  for (const axis of AXES) if (raw[axis] !== undefined) wSum += TCI_WEIGHTS[axis];
+
   const deductions = { thermal: 0, rain: 0, pm: 0, wind: 0, sun: 0 };
-  for (const k of ["thermal", "rain", "pm", "wind", "sun"] as const) {
-    const s = raw[k];
+  const shares = { thermal: 0, rain: 0, pm: 0, wind: 0, sun: 0 };
+  for (const axis of AXES) {
+    const s = raw[axis];
     if (s === undefined || wSum === 0) continue;
-    const share = (TCI_WEIGHTS[k] / wSum) * 100; // 축 배점(정규화)
-    deductions[k] = Math.max(0, Math.min(share, share * ((5 - s) / 5)));
+    const share = (TCI_WEIGHTS[axis] / wSum) * 100;
+    shares[axis] = share;
+    deductions[axis] = share * (1 - normalize(axis, s));
   }
-  return { tci: computeTci(input), deductions };
+  return { tci: computeTci(input), deductions, shares };
 }

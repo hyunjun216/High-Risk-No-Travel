@@ -1,7 +1,27 @@
 # -*- coding: utf-8 -*-
 # safety_engine.py — harinote 안전 점수 엔진의 Python 포팅
-# 원본: harinote/src/lib/safety/{weights.ts,score.ts} — 산식·상수 동일하게 유지할 것
-# 검증: 05_verify_engine.py가 원본 vitest의 경계 속성들을 재현해 확인한다
+#
+# ⚠️ 경고: 이 파일은 2026-07-10 시점 엔진(v1)이며 현행(v2)과 다르다. 갱신되지 않았다.
+#
+#   축        | 여기(v1)              | 현행 weights.ts(v2)
+#   ----------|-----------------------|---------------------------------
+#   산불      | 0/6/12/20 (MAX 20)    | 0/15/45/80 (MAX 80)  ← 3.75배
+#   산사태    | 없음                  | 0/45/80 (MAX 80) 신설
+#   호우      | 강수·강풍에 합산      | 별도 축 분리 (MAX 20)
+#   쾌적층    | 개별 감점 함수        | 관광기후지수(TCI) 5축 가중
+#   프로필    | 배율 (heat×1.3)       | 임계값 하향 (heatShiftC 2℃)
+#   한파      | 없음                  | 있음 (계절 모드)
+#
+#   따라서 이 엔진을 쓰는 06~14·16의 모든 산출물(s_* 피처, 클러스터,
+#   risk_types.json)은 v1 기준이며 v2로 재실행되지 않았다.
+#
+# 정책: 엔진 산식을 쓰는 **새 분석은 Python 포팅이 아니라 TS 엔진을 직접 호출한다.**
+#   포팅은 반드시 드리프트하고, 드리프트하면 "발표에서 말하는 숫자"와
+#   "서비스가 쓰는 엔진"이 갈라진다. 실행 예:
+#     harinote/scripts/safety-sensitivity.ts  (cd harinote && pnpm check:sensitivity)
+#
+# 원본: harinote/src/lib/safety/{weights.ts,score.ts}
+# 검증: 05_verify_engine.py가 v1 기준으로 경계 속성을 재현한다(현행 엔진 검증이 아니다)
 
 HEAT = {"RAMP_START_C": 28, "ADVISORY_C": 33, "WARNING_C": 35, "MAX": 25}
 RAIN_WIND = {"PROB_LOW": 30, "PROB_MID": 60, "PROB_HIGH": 80,

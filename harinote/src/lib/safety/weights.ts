@@ -1,10 +1,20 @@
 /**
- * 안전 점수 가중치·임계값 상수 — 모든 수치는 공공기관 공식 발표 기준을 근거로 한다.
+ * 안전 점수 가중치·임계값 상수 — 이 파일이 값의 단일 출처다.
  *
- * 산식(제안서): SafetyScore = 100 - (WeatherRisk + DisasterRisk + MedicalRisk + MobilityRisk)
- * 감점 상한(제안서 표): 폭염 25 / 강수·강풍 20 / 미세먼지 15 / 산불 20 / 산사태 15 /
- *                      응급의료 10 / 대피소 10 / 이동 위험 10(2주차)
- * (제안서의 '산불·산사태 20'을 산불(건조)·산사태(강우) 상반 재해로 분리 — 동시 발생 희박)
+ * 현행 산식: SafetyScore = 100 − (쾌적층 TCI 감점 + 안전층 감점)
+ *   · 쾌적층 = 체감온도·강수·미세먼지·바람·일조. **가중치는 tci.ts TCI_WEIGHTS**에 있다
+ *     (한국형 관광기후지수 KTCI 실증가중). 이 파일의 HEAT/RAIN_WIND/PM25 상수와
+ *     *Points() 함수들은 그 이전 세대(v1)의 것으로, 현재 점수 계산에 쓰이지 않는다 —
+ *     남아 있는 이유는 각 함수 주석 참조.
+ *   · 안전층 = 호우·산불·산사태·응급의료·대피소. 값은 전부 이 파일에 있다.
+ *
+ * **근거의 등급을 값마다 표시한다** — ✅ 공공기준/자체실증 · 🟡 외부논문 인용 ·
+ * ❌ 설계값(민감도 분석으로 강건성 방어).
+ *   · 전체 지도: analysis/25_safety_evidence_map.md ← 값을 추가·변경하면 여기도 갱신할 것
+ *   · 강건성 실측: analysis/24_safety_sensitivity_result.md (`pnpm check:sensitivity`)
+ *
+ * 주의: 이 파일 밖에 임계값을 두지 말 것(프로젝트 규칙). 표시 상한처럼 계산 구조에
+ * 종속된 값만 score.ts/tci.ts가 파생한다.
  */
 import type { Profile, RiskLevel } from "@/lib/safety/types";
 import type { PlaceEnvType } from "@/lib/tour/types";
@@ -28,6 +38,10 @@ export const HEAT = {
  * shiftC(민감층 임계값 하향): 기상청 폭염 영향예보가 취약계층(어린이·노약자)을
  * 일반인보다 낮은 체감온도에서 위험 단계에 진입시키는 구조를 차용 —
  * 곡선 전체를 shiftC만큼 왼쪽으로 이동시킨다 (= tempC + shiftC 지점에서 평가).
+ *
+ * ⚠ **현행 엔진은 이 함수를 호출하지 않는다** — 폭염은 tci.ts thermalScore로 계산된다.
+ *   NOTE_민감층_임계값.md가 "2℃ 좌측 이동"을 채택했을 때 전제한 곡선이 이것이라,
+ *   그 근거가 현행 곡선에서도 성립하는지 대조하는 기준으로 남겨 둔다.
  */
 export function heatPoints(tempC: number, shiftC = 0): number {
   const t = tempC + shiftC;
@@ -63,7 +77,11 @@ export const RAIN_WIND = {
   MAX_POINTS: 20,
 } as const;
 
-/** 강수확률(%) + 예상 강수량(mm) → 강수 기본 감점 (0~18) */
+/**
+ * 강수확률(%) + 예상 강수량(mm) → 강수 기본 감점 (0~18).
+ * ⚠ 현행 엔진 미사용(v1) — 강수는 tci.ts rainScore, 침수·급류는 위 HEAVY_RAIN이 맡는다.
+ *   RAIN_WIND 상수 자체는 report/checklist.ts가 준비물 문구 기준으로 계속 쓴다.
+ */
 export function rainPoints(rainProbPct: number, rainMm?: number): number {
   let pts = 0;
   if (rainProbPct >= RAIN_WIND.PROB_HIGH_PCT) pts = 12;
@@ -76,11 +94,39 @@ export function rainPoints(rainProbPct: number, rainMm?: number): number {
   return pts;
 }
 
-/** 풍속(m/s) → 강풍 기본 감점 (0~8) */
+/** 풍속(m/s) → 강풍 기본 감점 (0~8). ⚠ 현행 엔진 미사용(v1) — tci.ts windScore가 대체. */
 export function windPoints(windMs: number): number {
   if (windMs >= RAIN_WIND.WIND_ADVISORY_MS) return 8;
   if (windMs >= RAIN_WIND.WIND_CAUTION_MS) return 4;
   return 0;
+}
+
+// ─────────────────────────────────────────────
+// 한파 (상한 25) — 현재 계절 모드(D+4~)에서만 적용된다
+// ─────────────────────────────────────────────
+/**
+ * 한파 감점 임계값.
+ * 기준: 기상청 한파주의보 −12℃ / 한파경보 −15℃ (아침 최저기온).
+ *   폭염 커브와 대칭 형태로 두어 더위·추위의 감점 스케일을 맞춘다.
+ *
+ * ⚠ 한계: 이 축은 seasonal.ts(계절 모드)에만 적용된다. 실시간·단기예보 경로
+ *   (오늘~D+3)에는 한파 감점이 없어, 겨울 여행을 3일 안에 조회하면 추위가
+ *   점수에 반영되지 않는다. 축 확장은 별도 과제.
+ */
+export const COLD = {
+  ADVISORY_C: -12,
+  WARNING_C: -15,
+  /** 감점이 시작되는 온도 — 이보다 따뜻하면 0 */
+  RAMP_START_C: -5,
+  MAX_POINTS: 25,
+} as const;
+
+/** 최저기온(℃) → 한파 기본 감점 (analysis/16b cold_points와 동일 곡선) */
+export function coldPoints(tempC: number): number {
+  if (tempC > COLD.RAMP_START_C) return 0;
+  if (tempC > COLD.ADVISORY_C) return ((COLD.RAMP_START_C - tempC) / 7) * 8;
+  if (tempC > COLD.WARNING_C) return 12 + (COLD.ADVISORY_C - tempC) * (10 / 3);
+  return Math.min(COLD.MAX_POINTS, 22 + (COLD.WARNING_C - tempC) * 1.5);
 }
 
 // ─────────────────────────────────────────────
@@ -105,6 +151,10 @@ export const PM25_GRADE_LABEL = {
  * PM2.5(㎍/㎥) → 미세먼지 기본 감점.
  * sensitive(민감군 곡선): EPA AQI의 "민감군에게 나쁨(USG)" 구조 차용 —
  * 같은 농도에서 민감군(아이 동반)은 한 단계 이른 감점 (보통 3→5, 나쁨 8→12).
+ *
+ * ⚠ **현행 엔진 미사용** — 미세먼지는 tci.ts pmScore로 계산되고, 민감군은 곡선이 아니라
+ *   PM_SENSITIVE_MULT 배율로 처리된다. NOTE_민감층_임계값.md가 채택한 것은 이쪽 곡선이므로
+ *   근거와 구현이 어긋나 있다(PM_SENSITIVE_MULT 주석 참조). 곡선화 시 이 구현을 옮겨 쓴다.
  */
 export function pmPoints(pm25: number, sensitive = false): number {
   if (pm25 <= PM25.GOOD_MAX) return 0;
@@ -112,6 +162,17 @@ export function pmPoints(pm25: number, sensitive = false): number {
   if (pm25 <= PM25.BAD_MAX) return sensitive ? 12 : 8;
   return PM25.MAX_POINTS;
 }
+
+/**
+ * 민감군(아이 동반) 미세먼지 감점 배율.
+ *
+ * ⚠ 근거 불일치 — 정리 대상: NOTE_민감층_임계값.md는 배율 방식을 명시적으로 폐기하고
+ *   EPA AQI USG 구조의 **민감군 곡선**(보통 3→5, 나쁨 8→12)을 채택했다. 그 곡선은
+ *   위 pmPoints(pm25, sensitive)에 구현돼 있으나 현행 엔진(TCI 기반)이 호출하지 않아
+ *   죽어 있고, 실제로는 이 배율이 쓰인다. 폭염이 임계값 하향으로 간 것과 구조가 어긋난다.
+ *   pmScore에 민감군 변형을 넣어 곡선으로 통일하는 것이 후속 과제.
+ */
+export const PM_SENSITIVE_MULT = 1.4;
 
 export function pmGradeLabel(pm25: number): string {
   if (pm25 <= PM25.GOOD_MAX) return PM25_GRADE_LABEL.good;
@@ -170,6 +231,13 @@ export const LANDSLIDE = {
   WATCH_RAIN_MM: 40,
   WARN_RAIN_MM: 80,
   MAX_POINTS: 80,
+  /**
+   * 시군 대표점수의 산사태 감점 상한(점) — 노출 비율×이 값.
+   * 관광지 1곳의 감점(45/80)을 시군 헤드라인에 그대로 박으면 산지를 낀 시군이 전부
+   * 침몰하므로, 시군 안에서 위험 구역에 걸친 비율만큼만 깎는다.
+   * 실측(analysis): 50mm 강수 시 인제 61%→−9, 강릉 2%→0.
+   */
+  REGION_CAP: 15,
 } as const;
 
 /**
@@ -211,12 +279,69 @@ export function landslidePoints(level: number): number {
 }
 
 // ─────────────────────────────────────────────
+// 호우 침수·급류 (안전층, 상한 20) — 쾌적층 강수(TCI)와 분리된 위험 축
+// ─────────────────────────────────────────────
+/**
+ * 일 강수량 → 침수·급류 위험 감점.
+ * 밴드 경계: 기상청 호우 특보 발표 기준(주의보 3시간 60mm, 경보 3시간 90mm)을
+ *   일강수로 근사하고, 그 아래 예비 구간을 주의보의 절반(30mm)으로 둔다.
+ *   쾌적층 TCI 강수는 5mm에서 포화하므로(= 관광 불편의 상한), 그 위의 "위험" 구간을
+ *   이 축이 맡는다. 강수가 두 번 깎이는 게 아니라 층이 다르다.
+ * 절대값(6/11/16)은 설계값 — 안전층 표시 상한 20 안에서 밴드를 배분한 것이며
+ *   공공 기준이 아니다. 강건성은 민감도 분석으로 확인한다
+ *   (analysis/24_safety_sensitivity.md, 재현: pnpm check:sensitivity).
+ */
+/**
+ * 일조 감점 완화 계수 — 강수확률이 높으면 "흐림"은 강수 축이 이미 반영하므로
+ * 일조에서 또 깎지 않는다(이중 페널티 방지). 밴드는 강수 밴드(30/60%)와 맞춘다.
+ * 강수확률이 결측이면 정보가 없는 것이므로 완화하지 않는다(계수 1).
+ */
+export const SUN_RAIN_ADJ = {
+  HIGH_PROB_PCT: 60,
+  MID_PROB_PCT: 30,
+  /** 강수확률 60%↑ 완전 상쇄 / 30~60% 절반 / 그 미만 그대로 */
+  FACTORS: { high: 0, mid: 0.5, low: 1 },
+} as const;
+
+export const HEAVY_RAIN = {
+  /** 호우주의보의 절반 — 우산·우비 필수를 넘어 침수가 시작되는 구간 */
+  PRE_MM: 30,
+  /** 기상청 호우주의보: 3시간 60mm 이상 예상 */
+  WATCH_MM: 60,
+  /** 기상청 호우경보: 3시간 90mm 이상 예상 */
+  WARN_MM: 90,
+  POINTS: { pre: 6, watch: 11, warn: 16 },
+  MAX_POINTS: 20,
+} as const;
+
+/** 일강수량(mm) → 호우 기본 감점. 결측이면 0(정보 없음이 불이익이 되지 않게). */
+export function heavyRainPoints(
+  rainMm: number | undefined,
+  points: { pre: number; watch: number; warn: number } = HEAVY_RAIN.POINTS,
+): number {
+  if (rainMm === undefined) return 0;
+  if (rainMm >= HEAVY_RAIN.WARN_MM) return points.warn;
+  if (rainMm >= HEAVY_RAIN.WATCH_MM) return points.watch;
+  if (rainMm >= HEAVY_RAIN.PRE_MM) return points.pre;
+  return 0;
+}
+
+// ─────────────────────────────────────────────
 // 응급의료 접근성 (상한 10)
 // ─────────────────────────────────────────────
 /**
  * 중증 응급환자 골든타임 확보 기준 거리.
- * 보건복지부 응급의료 취약지 판정 기준(지역응급의료센터 30분/1시간 내 접근)을
- * 도로 이동거리로 환산해 10km 이내 양호 / 10~20km 주의 / 30km+ 취약으로 구간화.
+ * 기준: 보건복지부 응급의료 취약지 판정(지역응급의료센터 30분 내 접근).
+ *
+ * 거리 경계는 가정 환산이 아니라 실측 대응이 확인됐다 — 강원 119 출동 기록의
+ * 거리↔소요시간 중앙값 회귀(analysis/11_medical_curve.py, 재현 시 재계산):
+ *   소요분 = 8.32 + 0.53 × 도로거리km   (직선거리는 우회계수 1.3 적용)
+ * 이 식으로 현행 경계는 10km→15분 / 20km→22분 / 30km→29분에 대응한다.
+ * 즉 상한(30km)이 복지부 30분 기준에 맞고, 그 아래 두 구간이 그 안을 나눈다.
+ *
+ * 한계(정직하게): 위 회귀는 소방서→현장 출동 구간이라 관광지→병원 이송 구간에
+ * 그대로 적용한 근사다. 취약지의 다른 축인 60분 기준까지 선형 외삽하면 75km가
+ * 나오는데, 함축 속도가 114km/h라 강원 산악도로에서 비현실적이므로 채택하지 않았다.
  */
 export const MEDICAL = {
   NEAR_KM: 10,
@@ -273,6 +398,10 @@ export interface EnvWeight {
   fire: number;
 }
 
+// fire는 산불 1~3단계에만, 그중에서도 할인(<1)만 적용된다 (적용 지점: score.ts fireEnv).
+//  - 4단계(매우높음)는 입산통제·대피급이라 지형 무관하게 방문자제 밴드에 남긴다
+//  - 산악 가중 1.3은 설계값이라 실증 보정 전까지 미적용 — 적용 시 산불 3단계에서
+//    산악 관광지 216곳이 일괄 방문자제가 되는데 그 배율의 근거가 아직 없다
 export const ENV_WEIGHT: Record<PlaceEnvType, EnvWeight> = {
   /** 실내는 기상 영향이 낮다. 산불도 직접 노출이 낮아 동일하게 0.3 —
    * 도심 상가 음식점이 시군 산불 단계를 그대로 감점받는 왜곡 방지 */
@@ -307,6 +436,16 @@ export interface ProfileWeight {
   pmSensitive: boolean;
 }
 
+/**
+ * 민감층 폭염 임계값 하향(heatShiftC)을 적용하기 시작하는 체감온도.
+ *
+ * 하향은 '더위' 쪽에만 걸어야 한다. 열쾌적 곡선 전체를 왼쪽으로 옮기면 추운 날에는
+ * 더 따뜻한 지점에서 평가되어 **감점이 줄고**, 결과적으로 "아이 동반이 더 안전"해지는
+ * 역전이 생긴다(겨울 계획 진단에서 실제로 관측됨). 최적 구간(18~25℃) 상단인 25℃를
+ * 경계로 두어, 쾌적한 날에는 프로필 간 차이를 만들지 않고 더위부터 갈라지게 한다.
+ */
+export const HEAT_SHIFT_FLOOR_C = 25;
+
 export const PROFILE_WEIGHT: Record<Profile, ProfileWeight> = {
   default: { heat: 1.0, pm: 1.0, medical: 1.0, heatShiftC: 0, pmSensitive: false },
   /** 아이 동반: 폭염 임계값 2℃ 하향 + 미세먼지 민감군 곡선 */
@@ -320,12 +459,28 @@ export const PROFILE_WEIGHT: Record<Profile, ProfileWeight> = {
 // ─────────────────────────────────────────────
 // 등급/레벨 컷
 // ─────────────────────────────────────────────
-/** 점수 등급 컷: 70 이상 low(주의 요인 낮음), 40~69 moderate, 40 미만 high */
+/**
+ * 점수 등급 컷: 70 이상 low(주의 요인 낮음), 40~69 moderate, 40 미만 high.
+ * 설계값 — 안전층 밴드(산불 '높음' 45, 경보급 80)를 이 컷에 앵커해 단계가 곧 권고가 되게 했다.
+ * 강건성은 민감도 분석으로 확인한다(analysis/24_safety_sensitivity_result.md).
+ */
+export const GRADE_CUT = { LOW: 70, MODERATE: 40 } as const;
+
 export function gradeForScore(score: number): RiskLevel {
-  if (score >= 70) return "low";
-  if (score >= 40) return "moderate";
+  if (score >= GRADE_CUT.LOW) return "low";
+  if (score >= GRADE_CUT.MODERATE) return "moderate";
   return "high";
 }
+
+/**
+ * 등급별 점수 구간 — 등급 안에서 점수로 색을 펴는 곳(지도 choropleth)이 참조한다.
+ * GRADE_CUT에서 파생하므로 컷을 바꾸면 자동으로 따라온다(수동 복제 금지).
+ */
+export const GRADE_SCORE_RANGE: Record<RiskLevel, [number, number]> = {
+  low: [GRADE_CUT.LOW, 100],
+  moderate: [GRADE_CUT.MODERATE, GRADE_CUT.LOW],
+  high: [0, GRADE_CUT.MODERATE],
+};
 
 /** 요인 레벨: 감점/상한 비율 1/3 미만 low, 2/3 미만 moderate, 이상 high */
 export function levelForPoints(points: number, maxPoints: number): RiskLevel {
@@ -374,3 +529,31 @@ export const COURSE_ANCHOR_SWITCH_MIN_GAIN = 10;
  * 근거: 산림청 4단계 중 3단계('높음')부터 입산 통제·화기 단속이 통상 강화됨.
  */
 export const CHECKLIST_FIRE_LEVEL = 3;
+
+// ─────────────────────────────────────────────
+// 민감도 분석용 교란 주입 — 스크립트·테스트 전용
+// ─────────────────────────────────────────────
+/**
+ * 안전층 감점·환경유형 가중을 일시적으로 덮어쓰는 주입 값.
+ *
+ * 용도: "이 값이 ±20% 달랐다면 등급이 바뀌었을까"를 **실제 서비스 엔진으로** 재현하기
+ *   위한 것이다(scripts/safety-sensitivity.ts). 별도 포팅으로 재계산하면 엔진과
+ *   어긋날 수 있어(analysis/safety_engine.py의 전례), 주입 구멍을 두고 원본을 돌린다.
+ *
+ * 기본값은 이 파일의 상수가 유일한 출처다 — tuning을 전달하지 않으면 동작이 완전히
+ * 동일하다(score.test.ts가 검증). 프로덕션 경로에서는 전달하지 않는다.
+ */
+export interface SafetyTuning {
+  /** 산불 단계별 감점 (기본 FOREST_FIRE.POINTS_BY_LEVEL) */
+  fire?: Record<1 | 2 | 3 | 4, number>;
+  /** 산사태 단계별 감점 (기본 LANDSLIDE.POINTS_BY_LEVEL) */
+  landslide?: Record<0 | 1 | 2, number>;
+  /** 호우 밴드별 감점 (기본 HEAVY_RAIN.POINTS) */
+  heavyRain?: { pre: number; watch: number; warn: number };
+  /** 응급의료 감점 배율 — 표시 상한도 함께 스케일된다 (기본 1) */
+  medicalMult?: number;
+  /** 대피소 감점 배율 — 표시 상한도 함께 스케일된다 (기본 1) */
+  shelterMult?: number;
+  /** 환경유형 가중 부분 덮어쓰기 (기본 ENV_WEIGHT). 절제 실험은 전 축을 1로 준다 */
+  env?: Partial<Record<PlaceEnvType, Partial<EnvWeight>>>;
+}

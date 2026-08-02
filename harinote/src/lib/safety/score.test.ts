@@ -4,7 +4,13 @@
  */
 import { describe, expect, it } from "vitest";
 import { computeSafetyScore, ALERT_BAND_CAP } from "@/lib/safety/score";
-import { gradeForScore } from "@/lib/safety/weights";
+import {
+  ENV_WEIGHT,
+  FOREST_FIRE,
+  HEAVY_RAIN,
+  LANDSLIDE,
+  gradeForScore,
+} from "@/lib/safety/weights";
 import type {
   Profile,
   RiskBreakdown,
@@ -141,6 +147,20 @@ describe("안전층 — 산불·산사태·응급의료", () => {
     expect(run({ forestFireLevel: 3 }).grade).toBe("moderate"); // 주의
     expect(run({ forestFireLevel: 4 }).grade).toBe("high"); // 방문 자제
     expect(run({ forestFireLevel: 4 }, "indoor").grade).toBe("high"); // 실내도 대피급
+  });
+
+  it("산불 3단계: 실내는 환경 할인, 산악은 가중 미적용(설계값 보류)", () => {
+    // 산불위험은 시군 공통값이라 실내에 그대로 먹이면 도심 음식점이 산지와 같은 감점을 받는다
+    const general = factor(run({ forestFireLevel: 3 }), "forest_fire").points;
+    const indoor = factor(run({ forestFireLevel: 3 }, "indoor"), "forest_fire").points;
+    const mountain = factor(run({ forestFireLevel: 3 }, "outdoor_mountain"), "forest_fire").points;
+    expect(indoor).toBeLessThan(general);
+    expect(mountain).toBe(general); // 산악 1.3 가중은 실증 보정 전까지 미적용
+  });
+
+  it("산불 4단계는 실내도 할인 없음 — 통제·대피급", () => {
+    const general = factor(run({ forestFireLevel: 4 }), "forest_fire").points;
+    expect(factor(run({ forestFireLevel: 4 }, "indoor"), "forest_fire").points).toBe(general);
   });
 
   it("산사태: 비 안 오면 요인 없음, 공식 경보(2)는 요인 발생", () => {
@@ -286,5 +306,141 @@ describe("풍속 미제공 — 요인 비표시 + 총점 무결성", () => {
     expect(b.score).toBeGreaterThanOrEqual(0);
     expect(b.score).toBeLessThanOrEqual(100);
     expect(b.factors.map((f) => f.key)).not.toContain("heavy_rain"); // 강수량 없음 → 축 비활성
+  });
+});
+
+/**
+ * 민감층 프로필이 실제로 점수를 가르는가.
+ * NOTE_민감층_임계값.md가 채택한 "임계값 2℃ 하향"이 코드에서 살아 있는지 지킨다 —
+ * 이 근거는 발표에서 인용하는 3대 실증 중 하나다.
+ */
+describe("민감층 프로필 차등", () => {
+  const at = (feels: number, profile: Profile) =>
+    computeSafetyScore(
+      { ...CLEAR, tempC: feels, apparentTempC: feels },
+      { envType: "outdoor_general" },
+      profile,
+    ).score;
+
+  it("폭염 구간에서 민감층 점수가 더 낮다 (임계값 하향이 살아 있다)", () => {
+    for (const feels of [33, 35]) {
+      expect(at(feels, "with_kids"), `체감 ${feels}℃`).toBeLessThan(at(feels, "default"));
+      expect(at(feels, "with_seniors"), `체감 ${feels}℃`).toBeLessThan(at(feels, "default"));
+    }
+  });
+
+  it("추운 날·쾌적한 날에는 민감층이 더 높은 점수를 받지 않는다 (역전 금지)", () => {
+    // 임계값 하향을 곡선 전체에 걸면 추운 쪽에서 감점이 줄어 "아이 동반이 더 안전"해진다.
+    for (const feels of [-8, -1, 0, 5, 16, 22, 24]) {
+      expect(at(feels, "with_kids"), `체감 ${feels}℃`).toBeLessThanOrEqual(
+        at(feels, "default"),
+      );
+    }
+  });
+
+  it("체감 37℃ 이상은 열쾌적이 바닥이라 차등이 더 벌어지지 않는다 (알려진 한계)", () => {
+    // thermalScore의 최저 밴드가 37℃에서 시작한다. 밴드를 늘리는 것은 ASHRAE 근사의
+    // 범위를 벗어나므로, 근거 없이 확장하는 대신 한계로 고정해 둔다.
+    for (const feels of [37, 39]) {
+      expect(at(feels, "with_kids")).toBe(at(feels, "default"));
+    }
+  });
+});
+
+/** 요인 게이지가 배점을 넘지 않는다 — 넘으면 화면에서 막대가 100%를 초과한다 */
+describe("요인 표시 상한", () => {
+  it("어떤 입력 조합에서도 points ≤ maxPoints", () => {
+    const inputs: RiskInput[] = [
+      CLEAR,
+      { ...CLEAR, tempC: 41, apparentTempC: 41, pm25: 200, rainProbPct: 100 },
+      // 중기예보 — 풍속·일조·강수량 결측 → TCI가 축을 빼고 재정규화한다
+      {
+        ...CLEAR,
+        tempC: 38,
+        apparentTempC: 38,
+        pm25: 90,
+        windMs: undefined,
+        sunHours: undefined,
+        rainMm: undefined,
+      },
+      { ...CLEAR, rainMm: 95, rainProbPct: 95, landslideLevel: 2, shelterKm: 9 },
+    ];
+    const envs: PlaceEnvType[] = [
+      "indoor",
+      "outdoor_water",
+      "outdoor_mountain",
+      "outdoor_coast",
+      "outdoor_general",
+    ];
+    const profiles: Profile[] = ["default", "with_kids", "with_seniors", "with_kids_seniors"];
+    for (const input of inputs)
+      for (const envType of envs)
+        for (const profile of profiles)
+          for (const f of computeSafetyScore(input, { envType }, profile).factors)
+            expect(f.points, `${f.key} @ ${envType}/${profile}`).toBeLessThanOrEqual(
+              f.maxPoints,
+            );
+  });
+});
+
+/**
+ * 민감도 분석(scripts/safety-sensitivity.ts)이 쓰는 교란 주입 구멍.
+ * 프로덕션은 이 인자를 전달하지 않으므로, 미전달 시 동작이 완전히 같아야 한다.
+ */
+describe("SafetyTuning 주입", () => {
+  const CASES: RiskInput[] = [
+    CLEAR,
+    { ...CLEAR, tempC: 36, apparentTempC: 38, forestFireLevel: 3 },
+    { ...CLEAR, rainMm: 95, rainProbPct: 95, landslideLevel: 2, shelterKm: 4 },
+    { ...CLEAR, emergencyRoomKm: 35, forestFireLevel: 4 },
+  ];
+  const ENVS: PlaceEnvType[] = [
+    "indoor",
+    "outdoor_water",
+    "outdoor_mountain",
+    "outdoor_coast",
+    "outdoor_general",
+  ];
+
+  it("tuning 미전달과 빈 객체 전달의 결과가 같다", () => {
+    for (const input of CASES) {
+      for (const envType of ENVS) {
+        expect(computeSafetyScore(input, { envType }, "default", {})).toEqual(
+          computeSafetyScore(input, { envType }, "default"),
+        );
+      }
+    }
+  });
+
+  it("기본 상수를 명시적으로 전달해도 결과가 같다 — 주입 경로가 값을 왜곡하지 않는다", () => {
+    const identity = {
+      fire: FOREST_FIRE.POINTS_BY_LEVEL,
+      landslide: LANDSLIDE.POINTS_BY_LEVEL,
+      heavyRain: HEAVY_RAIN.POINTS,
+      medicalMult: 1,
+      shelterMult: 1,
+      env: { outdoor_mountain: ENV_WEIGHT.outdoor_mountain },
+    };
+    for (const input of CASES) {
+      for (const envType of ENVS) {
+        expect(computeSafetyScore(input, { envType }, "default", identity)).toEqual(
+          computeSafetyScore(input, { envType }, "default"),
+        );
+      }
+    }
+  });
+
+  it("밴드를 키우면 감점이 커지고 표시 상한도 함께 오른다", () => {
+    const input = { ...CLEAR, forestFireLevel: 3 as const };
+    const base = computeSafetyScore(input, { envType: "outdoor_general" }, "default");
+    const up = computeSafetyScore(input, { envType: "outdoor_general" }, "default", {
+      fire: { 1: 0, 2: 18, 3: 54, 4: 96 },
+    });
+    const baseFire = base.factors.find((f) => f.key === "forest_fire")!;
+    const upFire = up.factors.find((f) => f.key === "forest_fire")!;
+    expect(upFire.points).toBeGreaterThan(baseFire.points);
+    // 상한이 고정이면 교란이 clamp에 흡수되어 측정이 무의미해진다
+    expect(upFire.maxPoints).toBeGreaterThan(baseFire.maxPoints);
+    expect(upFire.points).toBeLessThanOrEqual(upFire.maxPoints);
   });
 });

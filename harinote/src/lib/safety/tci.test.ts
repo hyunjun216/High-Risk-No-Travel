@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  TCI_WEIGHTS,
   computeTci,
   computeTciBreakdown,
   pmScore,
@@ -7,6 +8,7 @@ import {
   sunScore,
   thermalScore,
   windScore,
+  type TciInput,
 } from "@/lib/safety/tci";
 
 describe("windScore — Mieczkowski normal system (km/h)", () => {
@@ -87,6 +89,54 @@ describe("thermalScore — 체감온도 브리지", () => {
   it("체감 높을수록 점수 감소(25→31→35)", () => {
     expect(thermalScore(25)).toBeGreaterThan(thermalScore(31));
     expect(thermalScore(31)).toBeGreaterThan(thermalScore(35));
+  });
+});
+
+describe("축 배점과 감점의 관계 — 근거 체인의 코드 증명", () => {
+  const ALL: TciInput = {
+    feelsC: 21,
+    rainMmDaily: 0,
+    rainProbPct: 0,
+    windMs: 1,
+    pm25: 8,
+    sunHours: 8,
+  };
+
+  it("5축이 모두 있으면 축 배점 = KTCI 가중 × 100", () => {
+    // "각 축이 최대로 깎을 수 있는 점수 = 그 축의 실증 가중"이 성립해야
+    // 발표에서 상한의 근거로 KTCI를 인용할 수 있다.
+    const { shares } = computeTciBreakdown(ALL);
+    for (const axis of ["thermal", "rain", "pm", "wind", "sun"] as const) {
+      expect(shares[axis]).toBeCloseTo(TCI_WEIGHTS[axis] * 100, 6);
+    }
+  });
+
+  it("감점은 배점을 넘지 않는다 — 열쾌적이 음수 구간이어도", () => {
+    for (const feelsC of [-20, -3, 21, 37, 45]) {
+      const { deductions, shares } = computeTciBreakdown({ ...ALL, feelsC });
+      for (const axis of ["thermal", "rain", "pm", "wind", "sun"] as const) {
+        expect(deductions[axis], `${axis} @ ${feelsC}℃`).toBeLessThanOrEqual(
+          shares[axis] + 1e-9,
+        );
+        expect(deductions[axis]).toBeGreaterThanOrEqual(0);
+      }
+    }
+  });
+
+  it("감점 합 + TCI = 100", () => {
+    for (const feelsC of [-10, 21, 36, 45]) {
+      const b = computeTciBreakdown({ ...ALL, feelsC, pm25: 90 });
+      const sum = Object.values(b.deductions).reduce((a, v) => a + v, 0);
+      expect(sum + b.tci).toBeCloseTo(100, 0);
+    }
+  });
+
+  it("축이 결측이면 나머지 배점이 커진다 (재정규화)", () => {
+    const full = computeTciBreakdown(ALL);
+    const noWindSun = computeTciBreakdown({ ...ALL, windMs: undefined, sunHours: undefined });
+    expect(noWindSun.shares.thermal).toBeGreaterThan(full.shares.thermal);
+    expect(noWindSun.shares.wind).toBe(0);
+    expect(noWindSun.shares.sun).toBe(0);
   });
 });
 
