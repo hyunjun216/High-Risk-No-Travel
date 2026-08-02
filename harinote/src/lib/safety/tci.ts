@@ -87,14 +87,24 @@ export function windScore(windMs: number): number {
 }
 
 /**
- * 미세먼지 점수(0~5) — 우리 확장. 환경부 PM2.5 등급(㎍/㎥).
- * 좋음(≤15)=5, 보통(≤35)=3.5, 나쁨(≤75)=1.5, 매우나쁨=0.
+ * 미세먼지 점수(0~5) — 우리 확장. 환경부 PM2.5 등급 경계(㎍/㎥) 15/35/75.
+ * 좋음=5, 보통=3.5, 나쁨=1.5, 매우나쁨=0.
+ *
+ * sensitive(민감군 곡선, 아이 동반): 같은 농도를 더 크게 감점한다.
+ * 근거 = 미국 EPA AQI의 "민감군에게 나쁨(USG)" 전용 구간 구조 +
+ *   analysis/NOTE_민감층_임계값.md 채택 스펙("보통 3→5, 나쁨 8→12, 좋음은 0 유지").
+ *   배율(×1.4)이 아니라 곡선이어야 하는 이유도 그 문서에 있다 — 배율은 감점이 0인
+ *   깨끗한 날 프로필 차이를 못 만들고, 상한 구간에서는 배점을 넘겨버린다.
+ *
+ * 스펙의 배(보통 5/3, 나쁨 12/8)를 이 축의 감점 비율에 적용하면 보통 0.3→0.5,
+ * 나쁨 0.7→1.05가 된다. 나쁨은 상한(1.0)을 넘어 매우나쁨과 같아지므로 밴드 순서가
+ * 유지되도록 0.9로 둔다 — 이 한 값만 설계값이다.
  */
-export function pmScore(pm25: number): number {
-  if (pm25 <= 15) return 5;
-  if (pm25 <= 35) return 3.5;
-  if (pm25 <= 75) return 1.5;
-  return 0;
+export function pmScore(pm25: number, sensitive = false): number {
+  if (pm25 <= 15) return 5; // 좋음 — 스펙대로 민감군도 감점 0
+  if (pm25 <= 35) return sensitive ? 2.5 : 3.5;
+  if (pm25 <= 75) return sensitive ? 0.5 : 1.5;
+  return 0; // 매우나쁨 — 둘 다 축 상한
 }
 
 /** TCI 입력 — RiskInput에서 조립. windMs·sunHours는 선택(예보가 안 주면 축 제외). */
@@ -106,6 +116,8 @@ export interface TciInput {
   /** 풍속 m/s — 중기예보 미제공. 없으면 wind 축 제외 후 재정규화(sunHours와 동일) */
   windMs?: number;
   pm25: number;
+  /** 민감군(아이 동반) 곡선 사용 — 배점은 그대로 두고 감점 곡선만 바뀐다 */
+  pmSensitive?: boolean;
   sunHours?: number;
 }
 
@@ -153,7 +165,7 @@ function rawScores(input: TciInput): Record<Axis, number | undefined> {
   return {
     thermal: thermalScore(input.feelsC),
     rain: rainScore(input.rainMmDaily, input.rainProbPct),
-    pm: pmScore(input.pm25),
+    pm: pmScore(input.pm25, input.pmSensitive),
     wind: input.windMs !== undefined ? windScore(input.windMs) : undefined,
     sun: input.sunHours !== undefined ? sunScore(input.sunHours) : undefined,
   };

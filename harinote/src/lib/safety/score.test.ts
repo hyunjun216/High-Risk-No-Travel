@@ -122,11 +122,32 @@ describe("쾌적층(TCI) — 계절 패턴", () => {
     expect(wet).toBe(0); // ≥60% → 강수 축이 담당, 일조 중복 제거
   });
 
-  it("미세먼지 매우나쁨은 pm 감점, 민감층(with_kids)은 더 크다", () => {
-    const base = factor(run({ pm25: 120 }), "pm").points;
-    const kids = factor(run({ pm25: 120 }, "outdoor_general", "with_kids"), "pm").points;
-    expect(base).toBeGreaterThan(0);
-    expect(kids).toBeGreaterThan(base);
+  // 민감군은 배율이 아니라 곡선이다 — NOTE_민감층_임계값.md 채택 스펙:
+  // 좋음 0=0 · 보통 3→5 · 나쁨 8→12 · 매우나쁨 15=15 (양 끝은 같고 중간만 벌어진다)
+  it("미세먼지 민감층(with_kids) 차등은 보통·나쁨 구간에서 생긴다", () => {
+    const pm = (pm25: number, profile: Profile = "default") =>
+      factor(run({ pm25 }, "outdoor_general", profile), "pm").points;
+    // 보통(≤35)·나쁨(≤75) — 같은 농도에서 민감군이 더 깎인다
+    expect(pm(30, "with_kids")).toBeGreaterThan(pm(30));
+    expect(pm(60, "with_kids")).toBeGreaterThan(pm(60));
+  });
+
+  it("미세먼지 좋음·매우나쁨은 프로필과 무관 — 스펙상 양 끝은 동일", () => {
+    const pm = (pm25: number, profile: Profile = "default") =>
+      factor(run({ pm25 }, "outdoor_general", profile), "pm").points;
+    expect(pm(10)).toBe(0); // 좋음 — 둘 다 감점 0
+    expect(pm(10, "with_kids")).toBe(0);
+    expect(pm(120)).toBeGreaterThan(0); // 매우나쁨 — 둘 다 축 상한
+    expect(pm(120, "with_kids")).toBe(pm(120));
+  });
+
+  it("민감층 미세먼지 감점이 축 배점을 넘지 않는다 — 배율 방식의 결함", () => {
+    // 배율(×1.4)은 매우나쁨에서 배점을 초과해 표시 상한까지 부풀려야 했다.
+    // 곡선은 배점 안에서 움직이므로 게이지가 100%를 넘지 않는다
+    const f = factor(run({ pm25: 120 }, "outdoor_general", "with_kids"), "pm");
+    expect(f.points).toBeLessThanOrEqual(f.maxPoints);
+    // 배점은 프로필과 무관하게 KTCI 가중에서만 나온다
+    expect(f.maxPoints).toBe(factor(run({ pm25: 120 }), "pm").maxPoints);
   });
 
   it("비 오면 같은 조건보다 점수 하락", () => {

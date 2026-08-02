@@ -77,6 +77,23 @@ describe("pmScore — 환경부 PM2.5 등급", () => {
     expect(pmScore(10)).toBeGreaterThan(pmScore(30));
     expect(pmScore(30)).toBeGreaterThan(pmScore(50));
   });
+
+  // NOTE_민감층_임계값.md 채택 스펙: 좋음 0=0 · 보통 3→5 · 나쁨 8→12 · 매우나쁨 15=15
+  describe("민감군 곡선 (EPA AQI USG 구조)", () => {
+    it("보통·나쁨은 민감군이 더 낮은 점수 = 더 큰 감점", () => {
+      expect(pmScore(30, true)).toBeLessThan(pmScore(30));
+      expect(pmScore(60, true)).toBeLessThan(pmScore(60));
+    });
+
+    it("좋음·매우나쁨은 동일 — 스펙상 양 끝은 차이 없음", () => {
+      expect(pmScore(10, true)).toBe(pmScore(10));
+      expect(pmScore(100, true)).toBe(pmScore(100));
+    });
+
+    it("민감군 곡선도 밴드 순서가 유지된다 (나쁨 > 매우나쁨)", () => {
+      expect(pmScore(60, true)).toBeGreaterThan(pmScore(100, true));
+    });
+  });
 });
 
 describe("thermalScore — 체감온도 브리지", () => {

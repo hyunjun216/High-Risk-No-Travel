@@ -28,7 +28,6 @@ import {
   coldPoints,
   LANDSLIDE,
   MEDICAL,
-  PM_SENSITIVE_MULT,
   PROFILE_WEIGHT,
   SHELTER,
   SUN_RAIN_ADJ,
@@ -91,13 +90,16 @@ export function computeSafetyScore(
     rainProbPct: input.rainProbPct,
     windMs: input.windMs,
     pm25: input.pm25,
+    // 민감군(아이 동반)은 배율이 아니라 곡선으로 — 폭염의 임계값 하향과 같은 구조다
+    // (근거: analysis/NOTE_민감층_임계값.md, EPA AQI USG). 배점은 그대로 둔다.
+    pmSensitive: prof.pmSensitive,
     sunHours: input.sunHours, // 하늘상태(SKY) 환산 — 없으면 TCI가 4축 재정규화
   });
 
   // envType·프로필로 변조 (실내 할인·계곡 강수 가중·미먼 민감군).
   // 표시 상한도 같은 계수를 곱한다 — "이 장소에서 이 축이 최대로 깎을 수 있는 점수"라야
   // 게이지가 배점을 넘지 않고, 상한 자체가 KTCI 가중에서 파생된다는 근거가 유지된다.
-  const pmMult = env.pm * (prof.pmSensitive ? PM_SENSITIVE_MULT : 1);
+  const pmMult = env.pm;
   const thermalPts = Math.round(tb.deductions.thermal * env.heat);
   const thermalMax = Math.round(tb.shares.thermal * env.heat);
   // 강수(쾌적, TCI) — 비로 관광이 불편한 정도. 침수·급류 위험은 안전층 호우로 분리.

@@ -2,7 +2,7 @@
 
 > **이 파일은 산출물이다 — 직접 수정하지 말 것.**
 > 재현: `cd harinote && pnpm check:sensitivity`
-> 엔진: `harinote/src/lib/safety/` @ 29eccac (+ 미커밋 변경)
+> 엔진: `harinote/src/lib/safety/` @ 700259f (+ 미커밋 변경)
 > 방법·설계 근거는 [24_safety_sensitivity.md](24_safety_sensitivity.md) 참조.
 
 ## 왜 재는가

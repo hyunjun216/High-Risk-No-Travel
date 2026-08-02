@@ -156,9 +156,10 @@ export const PM25_GRADE_LABEL = {
  * sensitive(민감군 곡선): EPA AQI의 "민감군에게 나쁨(USG)" 구조 차용 —
  * 같은 농도에서 민감군(아이 동반)은 한 단계 이른 감점 (보통 3→5, 나쁨 8→12).
  *
- * ⚠ **현행 엔진 미사용** — 미세먼지는 tci.ts pmScore로 계산되고, 민감군은 곡선이 아니라
- *   PM_SENSITIVE_MULT 배율로 처리된다. NOTE_민감층_임계값.md가 채택한 것은 이쪽 곡선이므로
- *   근거와 구현이 어긋나 있다(PM_SENSITIVE_MULT 주석 참조). 곡선화 시 이 구현을 옮겨 쓴다.
+ * ⚠ **현행 엔진 미사용(v1)** — 미세먼지 점수는 tci.ts pmScore가 계산한다.
+ *   NOTE_민감층_임계값.md가 채택한 민감군 곡선(보통 3→5, 나쁨 8→12)의 원본이 이 함수이고,
+ *   그 취지는 pmScore(pm25, sensitive)로 이식됐다. 이식 시 밴드 비를 어떻게 옮겼는지는
+ *   pmScore 주석 참조. 이 구현은 채택 스펙의 원문 대조용으로 남긴다.
  */
 export function pmPoints(pm25: number, sensitive = false): number {
   if (pm25 <= PM25.GOOD_MAX) return 0;
@@ -166,17 +167,6 @@ export function pmPoints(pm25: number, sensitive = false): number {
   if (pm25 <= PM25.BAD_MAX) return sensitive ? 12 : 8;
   return PM25.MAX_POINTS;
 }
-
-/**
- * 민감군(아이 동반) 미세먼지 감점 배율.
- *
- * ⚠ 근거 불일치 — 정리 대상: NOTE_민감층_임계값.md는 배율 방식을 명시적으로 폐기하고
- *   EPA AQI USG 구조의 **민감군 곡선**(보통 3→5, 나쁨 8→12)을 채택했다. 그 곡선은
- *   위 pmPoints(pm25, sensitive)에 구현돼 있으나 현행 엔진(TCI 기반)이 호출하지 않아
- *   죽어 있고, 실제로는 이 배율이 쓰인다. 폭염이 임계값 하향으로 간 것과 구조가 어긋난다.
- *   pmScore에 민감군 변형을 넣어 곡선으로 통일하는 것이 후속 과제.
- */
-export const PM_SENSITIVE_MULT = 1.4;
 
 export function pmGradeLabel(pm25: number): string {
   if (pm25 <= PM25.GOOD_MAX) return PM25_GRADE_LABEL.good;
