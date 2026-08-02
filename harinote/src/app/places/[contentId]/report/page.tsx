@@ -7,7 +7,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getPlace, getPlacesWithSafety, getRiskInput } from "@/lib/datasource";
 import { computeSafetyScore } from "@/lib/safety/score";
-import { PROFILE_LABEL, RISK_CATEGORY_LABELS } from "@/lib/safety/types";
+import { PROFILE_LABEL } from "@/lib/safety/types";
+import RiskLayerSummary from "@/components/RiskLayerSummary";
 import { medicalDataSource, nearestHospital } from "@/lib/risk/medical";
 import { shelterDataSource } from "@/lib/risk/shelter";
 import { hasLiveRiskKeys } from "@/lib/risk/live";
@@ -125,19 +126,7 @@ export default async function ReportPage({ params, searchParams }: Props) {
         {/* ② 점수 요약 */}
         <section className="mt-5 print:mt-4">
           <SafetyScoreBadge score={safety.score} grade={safety.grade} size="lg" />
-          <p className="mt-2 text-sm font-semibold text-slate-600">
-            {RISK_CATEGORY_LABELS.map((c, i) => (
-              <span key={c.key}>
-                {i > 0 && <span className="text-slate-300"> · </span>}
-                {c.label}{" "}
-                <span
-                  className={`tabular-nums ${safety[c.key] > 0 ? "text-slate-800" : "text-slate-300"}`}
-                >
-                  −{safety[c.key]}점
-                </span>
-              </span>
-            ))}
-          </p>
+          <RiskLayerSummary factors={safety.factors} />
         </section>
 
         {/* ③ 오늘의 주의 요인 */}

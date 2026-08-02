@@ -117,11 +117,33 @@ export interface RiskBreakdown {
   medicalRisk: number;
 }
 
-/** 카테고리 소계 표시용 공용 정의 — 상세·리포트 화면이 같은 키·라벨·아이콘을 공유한다 */
-export const RISK_CATEGORY_LABELS = [
-  { key: "weatherRisk", icon: "🌤️", label: "기상" },
-  { key: "disasterRisk", icon: "⚠️", label: "재난" },
-  { key: "medicalRisk", icon: "🏥", label: "의료" },
+/**
+ * 쾌적층에 속하는 요인 — 나머지는 전부 안전층으로 본다 (RiskLayerSummary가 소계를 낸다).
+ *
+ * 왜 나누나: 같은 감점이라도 "비가 와서 관광이 불편함"과 "산불 단계가 높아 위험함"은
+ * 사용자에게 뜻이 다르다. 총점만 보면 맑고 추운 날 '주의 요인 높음'이 나와도 그게
+ * 불편인지 위험인지 알 수 없다.
+ *
+ * 한파(cold)는 안전층이다 — 기상 현상이지만 판단 기준이 기상청 한파특보(위험)이지
+ * 관광 쾌적이 아니다. 반대로 강수(rain)는 관광기후지수의 쾌적 축이고, 같은 비라도
+ * 침수·급류 위험은 heavy_rain으로 따로 잡힌다.
+ *
+ * ⚠ **표시 전용 분류다.** breakdown의 weatherRisk/disasterRisk/medicalRisk 필드는
+ *   추천·코스 로직이 쓰므로(예: alternatives.ts 악천후 실내 우대) 이 분류와 별개다.
+ *   그쪽은 제안서 산식의 3분류를 그대로 유지한다.
+ */
+export const COMFORT_FACTOR_KEYS: readonly RiskFactorKey[] = [
+  "heat",
+  "rain",
+  "wind",
+  "pm",
+  "sun",
+];
+
+/** 층 표시 메타 — 상세·숙박상세·리포트가 같은 라벨을 공유한다 */
+export const RISK_LAYERS = [
+  { id: "comfort", icon: "🌤️", label: "관광 쾌적" },
+  { id: "safety", icon: "⚠️", label: "안전 위험" },
 ] as const;
 
 export const GRADE_LABEL: Record<RiskLevel, string> = {

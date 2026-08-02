@@ -11,7 +11,8 @@ import {
 } from "@/lib/datasource";
 import { formatKoreanDate } from "@/lib/date";
 import { ENV_TYPE_LABEL, placeTypeLabel } from "@/lib/tour/types";
-import { PROFILE_LABEL, RISK_CATEGORY_LABELS } from "@/lib/safety/types";
+import { PROFILE_LABEL } from "@/lib/safety/types";
+import RiskLayerSummary from "@/components/RiskLayerSummary";
 import { Suspense } from "react";
 import { recommendAlternatives } from "@/lib/reco/alternatives";
 import { buildHalfDayCourse } from "@/lib/course/half-day";
@@ -387,25 +388,11 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
                 }
               />
             )}
-            {/* 카테고리 소계 — 리포트 화면과 같은 표현 */}
-            <p className="mt-2 text-sm font-semibold text-slate-600">
-              {RISK_CATEGORY_LABELS.map((c, i) => (
-                <span key={c.key}>
-                  {i > 0 && <span className="text-slate-300"> · </span>}
-                  {c.label}{" "}
-                  <span
-                    className={`tabular-nums ${analysisSafety[c.key] > 0 ? "text-slate-800" : "text-slate-300"}`}
-                  >
-                    −{analysisSafety[c.key]}점
-                  </span>
-                </span>
-              ))}
-              {dateSafety?.seasonal && (
-                <span className="ml-1.5 font-normal text-slate-400">
-                  궂은날 기준
-                </span>
-              )}
-            </p>
+            {/* 쾌적/안전 층 소계 — 리포트 화면과 같은 표현 */}
+            <RiskLayerSummary
+              factors={analysisSafety.factors}
+              note={dateSafety?.seasonal ? "궂은날 기준" : undefined}
+            />
             {dateSafety?.mode === "forecast" && (
               <p className="mt-2 text-xs text-slate-400">
                 기상은 {dateSafety.dayOffset}일 후 예보, 미세먼지·산불위험은
