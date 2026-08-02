@@ -41,7 +41,40 @@ describe("summarizeRegions", () => {
       expect(region.placeCount).toBe(0);
       expect(region.medianScore).toBeNull();
       expect(region.grade).toBeNull();
+      expect(region.rank).toBeNull();
     }
+  });
+
+  it("대표지는 야외 풀의 중앙값에서 고른다 — 실내 점수가 끌어올리지 않는다", () => {
+    // 실내가 다수이고 점수가 훨씬 높은 상황(산불 단계 실내 할인 등).
+    // 전체 중앙값(90)으로 야외 풀에서 고르면 야외 최고점(50)이 대표가 되지만,
+    // 야외 풀 중앙값(30)으로 고르면 실제 중앙 지점(30)이 대표가 된다
+    const places = [
+      ...[90, 92, 94, 96].map((s) => mockPlace(1, s, { envType: "indoor" })),
+      mockPlace(1, 10, { title: "야외-하" }),
+      mockPlace(1, 30, { title: "야외-중" }),
+      mockPlace(1, 50, { title: "야외-상" }),
+    ];
+    const region = summarizeRegions(places).find((r) => r.sigunguCode === 1)!;
+    expect(region.sampleName).toBe("야외-중");
+    expect(region.medianScore).toBe(30);
+  });
+
+  it("순위는 점수 내림차순 · 동점은 같은 순위(1·2·2·4)", () => {
+    const places = [
+      mockPlace(1, 90),
+      mockPlace(2, 80),
+      mockPlace(3, 80),
+      mockPlace(4, 70),
+    ];
+    const byCode = new Map(summarizeRegions(places).map((r) => [r.sigunguCode, r]));
+    expect(byCode.get(1)!.rank).toBe(1);
+    expect(byCode.get(2)!.rank).toBe(2);
+    expect(byCode.get(3)!.rank).toBe(2);
+    expect(byCode.get(4)!.rank).toBe(4);
+    // 관광지 0곳인 시군은 순위 모집단에서 빠진다
+    expect(byCode.get(1)!.rankedTotal).toBe(4);
+    expect(byCode.get(5)!.rank).toBeNull();
   });
 
   it("시군별로 그룹핑하고 sigunguCode 없는 관광지는 제외", () => {

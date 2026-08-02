@@ -24,9 +24,14 @@ export interface RegionSummary {
   lat: number;
   lng: number;
   /**
-   * 시군 대표 안전점수 = 대표 야외 관광지(중앙값 최근접) 점수에서, 응급의료(시군 중앙값)와
-   * 산사태(시군 위험노출 비율×상한)만 시군 집계로 보정한 값. 산사태 최악 1곳을 헤드라인에
+   * 시군 대표 안전점수 — **야외 관광지 기준**이다(실내는 기상 영향이 낮아 제외).
+   *
+   * 야외 풀의 중앙값에 가장 가까운 관광지를 대표로 삼고, 그 점수에서 응급의료(시군 중앙값)와
+   * 산사태(시군 위험노출 비율×상한)만 시군 집계로 보정한다. 산사태 최악 1곳을 헤드라인에
    * 박지 않아 전 지역 침몰을 막고, 최고 단계는 landslideAlert 배지로 별도. 0곳이면 null.
+   *
+   * ⚠ 목록 화면은 실내(음식점·카페)를 포함하므로, 실내·야외 점수가 벌어지는 날에는
+   *   이 값이 목록 상단보다 낮게 보인다. 같은 시군을 다른 모집단으로 보는 것이지 불일치가 아니다.
    */
   medianScore: number | null;
   /** 대표 점수의 등급(gradeForScore) — 관광지 0곳이면 null */
@@ -43,6 +48,16 @@ export interface RegionSummary {
   landslideAlert: 0 | 1 | 2;
   /** 시군 관광지 중 산사태 위험 구역(주의보+) 비율(%) — 배지 강도(옅음·진함) 차등용. */
   landslideExposurePct: number;
+  /**
+   * 안전점수 기준 시군 순위(1위 = 가장 안전). 동점은 같은 순위(1·2·2·4). 0곳이면 null.
+   *
+   * 등급만으로는 지도가 정보를 못 준다 — 계절에 따라 18개 시군이 통째로 같은 등급에
+   * 들어가는 날이 흔하다(실측: 5개 시나리오 중 3개). 절대 등급과 별개로 "강원 안에서
+   * 상대적으로 어디쯤인가"를 읽을 수 있어야 시군 비교라는 지도의 목적이 산다.
+   */
+  rank: number | null;
+  /** 순위 모집단 크기 = 점수가 있는 시군 수 (관광지 0곳인 시군 제외) */
+  rankedTotal: number;
 }
 
 /** 시군 산사태 감점 상한 — 근거·실측은 weights.ts LANDSLIDE.REGION_CAP 참조 */
@@ -70,7 +85,7 @@ export function summarizeRegions(places: PlaceWithSafety[]): RegionSummary[] {
     placesByCode.set(code, arr);
   }
 
-  return Object.keys(SIGUNGU_SEATS)
+  const sorted = Object.keys(SIGUNGU_SEATS)
     .map(Number)
     .map((code) => {
       const seat = SIGUNGU_SEATS[code];
@@ -89,10 +104,13 @@ export function summarizeRegions(places: PlaceWithSafety[]): RegionSummary[] {
       let landslideAlert: 0 | 1 | 2 = 0;
       let landslideExposurePct = 0;
       if (scores.length > 0) {
-        const anchor = median(scores);
         const general = group.filter((p) => p.envType === "outdoor_general");
         const outdoor = group.filter((p) => p.envType !== "indoor");
         const pool = general.length ? general : outdoor.length ? outdoor : group;
+        // 중앙값과 대표지를 **같은 모집단**에서 구한다. 전체(실내 포함) 중앙값으로 야외 풀에서
+        // 고르면, 실내·야외 점수가 벌어질 때 중앙값이 풀 전체보다 위로 올라가 대표지가
+        // "야외 최고점"으로 퇴화한다 — 산불 3단계 실측에서 10/18 시군이 그랬다.
+        const anchor = median(pool.map((p) => p.safety.score).sort((a, b) => a - b));
         const rep = pool.reduce((best, p) =>
           Math.abs(p.safety.score - anchor) < Math.abs(best.safety.score - anchor)
             ? p
@@ -194,6 +212,18 @@ export function summarizeRegions(places: PlaceWithSafety[]): RegionSummary[] {
     })
     // 안전점수 높은 시군부터 (데이터 없는 곳은 맨 뒤)
     .sort((a, b) => (b.medianScore ?? -1) - (a.medianScore ?? -1));
+
+  // 정렬 후에 순위를 붙인다. 동점은 같은 순위(1·2·2·4) — 점수가 정수라 동점이 흔하다
+  const rankedTotal = sorted.filter((r) => r.medianScore !== null).length;
+  let prevScore: number | null = null;
+  let prevRank = 0;
+  return sorted.map((r, i) => {
+    if (r.medianScore === null) return { ...r, rank: null, rankedTotal };
+    const rank = r.medianScore === prevScore ? prevRank : i + 1;
+    prevScore = r.medianScore;
+    prevRank = rank;
+    return { ...r, rank, rankedTotal };
+  });
 }
 
 /**

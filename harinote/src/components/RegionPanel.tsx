@@ -65,9 +65,20 @@ export default function RegionPanel({
                 grade={selected.grade}
               />
               <p className="text-xs text-slate-500">
-                {dateLabel} 기준 {GRADE_LABEL[selected.grade]} — 아래 지표 감점을
-                합산한 시군 대표 점수입니다.
+                {dateLabel} 기준 {GRADE_LABEL[selected.grade]} — 야외 관광지 기준으로
+                아래 지표 감점을 합산한 시군 대표 점수입니다.
               </p>
+              {/* 계절에 따라 18개 시군이 통째로 같은 등급에 들어가는 날이 흔하다.
+                  그럴 때 등급만으로는 시군을 비교할 수 없어 상대 순위를 함께 보인다 */}
+              {selected.rank !== null && (
+                <p className="text-xs font-semibold text-slate-600">
+                  강원 {selected.rankedTotal}개 시군 중{" "}
+                  <strong className="tabular-nums text-teal-700">
+                    {selected.rank}번째
+                  </strong>
+                  로 안전
+                </p>
+              )}
             </div>
           ) : (
             <p className="text-sm text-slate-500">
@@ -123,7 +134,11 @@ export default function RegionPanel({
         onClick={() => onSelect(region.sigunguCode)}
         className="flex w-full items-center justify-between gap-2 px-5 py-2.5 text-left transition-colors hover:bg-teal-50/60"
       >
-        <span className="min-w-0 truncate text-sm font-semibold text-slate-700">
+        {/* 순위를 앞에 둔다 — 등급이 전부 같은 날에도 목록이 서열 정보를 준다 */}
+        <span className="w-6 shrink-0 text-xs font-bold tabular-nums text-slate-400">
+          {region.rank !== null ? region.rank : "–"}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700">
           {region.name}
           <span className="ml-2 text-xs font-normal text-slate-400">
             관광지 {region.placeCount}곳
