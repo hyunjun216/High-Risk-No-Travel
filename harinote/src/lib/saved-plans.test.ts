@@ -5,6 +5,7 @@ import {
   removeSavedPlan,
   evictedBySaving,
   savedEntryFor,
+  updateTargetFor,
   upsertSavedPlan,
   type SavedPlan,
 } from "@/lib/saved-plans";
@@ -119,6 +120,43 @@ describe("savedEntryFor — 편집한 계획은 갱신, 새 계획만 추가", (
   });
 });
 
+// 저장 후에도 savedId가 작업 계획에 남아 있어서, 이어서 다른 여행을 짜고 새 이름으로
+// 저장하면 앞서 저장한 계획이 이름만 바뀐 채 덮어써졌다. 이름이 계획의 정체성이다.
+describe("updateTargetFor — 이름이 같을 때만 갱신", () => {
+  const list = [entry("p0", "설악산 여행"), entry("p1", "제주 여행")];
+  const BASE: TravelPlan = {
+    items: [{ contentId: 1, title: "A", lat: 37.75, lng: 128.87 }],
+  };
+
+  it("savedId가 없으면 새 계획", () => {
+    expect(updateTargetFor(list, BASE, "아무 이름")).toBeNull();
+  });
+
+  it("savedId가 가리키는 계획과 이름이 같으면 갱신", () => {
+    expect(
+      updateTargetFor(list, { ...BASE, savedId: "p0" }, "설악산 여행")?.id,
+    ).toBe("p0");
+  });
+
+  it("이름을 바꿔 저장하면 새 계획 — 앞 계획을 덮어쓰지 않는다", () => {
+    expect(
+      updateTargetFor(list, { ...BASE, savedId: "p0" }, "강릉 여행"),
+    ).toBeNull();
+  });
+
+  it("이름 앞뒤 공백은 무시한다", () => {
+    expect(
+      updateTargetFor(list, { ...BASE, savedId: "p0" }, "  설악산 여행 ")?.id,
+    ).toBe("p0");
+  });
+
+  it("savedId가 보관함에 없으면(삭제된 계획) 새 계획", () => {
+    expect(
+      updateTargetFor(list, { ...BASE, savedId: "없는id" }, "설악산 여행"),
+    ).toBeNull();
+  });
+});
+
 describe("evictedBySaving", () => {
   const full: SavedPlan[] = Array.from({ length: MAX_SAVED_PLANS }, (_, i) =>
     entry(`p${i}`, `계획 ${i}`),
@@ -128,19 +166,25 @@ describe("evictedBySaving", () => {
   };
 
   it("여유가 있으면 밀려나는 계획이 없다", () => {
-    expect(evictedBySaving(full.slice(0, MAX_SAVED_PLANS - 1), BASE)).toBeNull();
+    expect(
+      evictedBySaving(full.slice(0, MAX_SAVED_PLANS - 1), BASE, "새 계획"),
+    ).toBeNull();
   });
 
   it("가득 찬 상태에서 새 계획을 저장하면 가장 오래된 것이 밀려난다", () => {
-    expect(evictedBySaving(full, BASE)?.id).toBe(`p${MAX_SAVED_PLANS - 1}`);
+    expect(evictedBySaving(full, BASE, "새 계획")?.id).toBe(
+      `p${MAX_SAVED_PLANS - 1}`,
+    );
   });
 
-  it("가득 차도 기존 계획 갱신이면 아무도 밀려나지 않는다", () => {
-    expect(evictedBySaving(full, { ...BASE, savedId: "p3" })).toBeNull();
+  it("가득 차도 같은 이름으로 갱신하면 아무도 밀려나지 않는다", () => {
+    expect(
+      evictedBySaving(full, { ...BASE, savedId: "p3" }, "계획 3"),
+    ).toBeNull();
   });
 
-  it("savedId가 보관함에 없으면(삭제된 계획) 새 계획으로 본다", () => {
-    expect(evictedBySaving(full, { ...BASE, savedId: "없는id" })?.id).toBe(
+  it("가득 찬 상태에서 이름을 바꿔 저장하면 새 계획이라 밀려난다", () => {
+    expect(evictedBySaving(full, { ...BASE, savedId: "p3" }, "다른 이름")?.id).toBe(
       `p${MAX_SAVED_PLANS - 1}`,
     );
   });

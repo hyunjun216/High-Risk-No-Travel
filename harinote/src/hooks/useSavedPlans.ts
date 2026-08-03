@@ -5,6 +5,7 @@ import {
   isValidSavedPlanList,
   removeSavedPlan,
   savedEntryFor,
+  updateTargetFor,
   upsertSavedPlan,
   type SavedPlan,
 } from "@/lib/saved-plans";
@@ -87,8 +88,14 @@ export function useSavedPlans() {
 
   /** 저장 성공 시 항목 id, 실패 시 null — 호출부가 그 id를 계획에 새겨 다음 저장이 갱신이 되게 한다 */
   const save = useCallback((name: string, plan: TravelPlan): string | null => {
-    const entry = savedEntryFor(plan, name, new Date().toISOString(), newId);
-    return write(upsertSavedPlan(readList(), entry)) ? entry.id : null;
+    const list = readList();
+    // 이름을 바꿔 저장하면 갱신이 아니라 새 계획이다 — 이어받은 savedId를 떼어
+    // 앞서 저장한 계획을 덮어쓰지 않게 한다
+    const base = updateTargetFor(list, plan, name)
+      ? plan
+      : { ...plan, savedId: undefined };
+    const entry = savedEntryFor(base, name, new Date().toISOString(), newId);
+    return write(upsertSavedPlan(list, entry)) ? entry.id : null;
   }, []);
   const remove = useCallback(
     (id: string) => write(removeSavedPlan(readList(), id)),

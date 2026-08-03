@@ -7,7 +7,11 @@ import CourseRecommendModal from "@/components/CourseRecommendModal";
 import MultiDayCourseModal from "@/components/MultiDayCourseModal";
 import { useTravelPlan } from "@/hooks/useTravelPlan";
 import { useSavedPlans } from "@/hooks/useSavedPlans";
-import { evictedBySaving, MAX_SAVED_PLANS } from "@/lib/saved-plans";
+import {
+  evictedBySaving,
+  MAX_SAVED_PLANS,
+  updateTargetFor,
+} from "@/lib/saved-plans";
 import {
   dateOfDay,
   defaultSlotFor,
@@ -129,8 +133,11 @@ export default function TravelPlannerPanel({
   const defaultName =
     origin?.name ??
     (plan.from ? `${formatKoreanDate(plan.from)} 여행` : "내 여행 계획");
+  // 지금 입력된 이름으로 저장하면 갱신인지 새 계획인지 — 입력 중에도 실시간으로 갈린다
+  const pendingName = saveName.trim() || defaultName;
+  const updateTarget = updateTargetFor(savedList, plan, pendingName);
   // 지금 저장하면 밀려날 계획 (보관함이 가득 찬 새 계획일 때만)
-  const evicted = evictedBySaving(savedList, plan);
+  const evicted = evictedBySaving(savedList, plan, pendingName);
   const confirmSave = () => {
     if (plan.items.length === 0) return; // 비운 직후 잔류 폼에서 빈 계획 저장 방지
     // 저장 실패(쿼터·차단)를 성공으로 표시하지 않는다 — 무통보 데이터 손실 방지
@@ -375,6 +382,14 @@ export default function TravelPlannerPanel({
           >
             저장
           </button>
+          {/* 갱신인지 새 계획인지 저장 "전에" 보여준다 — 이름 한 글자가 결과를 가른다 */}
+          <p className="w-full text-xs font-semibold text-slate-500">
+            {updateTarget
+              ? `저장한 "${updateTarget.name}"을(를) 갱신합니다 — 이름을 바꾸면 새 계획으로 저장돼요`
+              : origin
+                ? `새 계획으로 저장합니다 — 저장한 "${origin.name}"은(는) 그대로 남아요`
+                : "새 계획으로 저장합니다"}
+          </p>
           {/* 보관함이 가득 찼을 때 무엇이 사라지는지 저장 "전에" 알린다 —
               사용자 데이터가 조용히 없어지지 않게 하는 것이 상한값보다 중요하다 */}
           {evicted && (
