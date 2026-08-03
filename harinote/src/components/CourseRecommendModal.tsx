@@ -190,19 +190,9 @@ export default function CourseRecommendModal({
                 <h3 className="text-xs font-bold uppercase tracking-wide text-slate-400">
                   여행 테마
                 </h3>
+                {/* 아무것도 안 고르면 3선 전체가 나온다 — 그 상태를 가리키는 "전체" 칩은
+                    두지 않는다. 고른 칩을 다시 누르면 전체로 돌아온다 */}
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  <button
-                    type="button"
-                    aria-pressed={theme === undefined}
-                    onClick={() => setTheme(undefined)}
-                    className={`rounded-xl px-3 py-1.5 text-sm font-semibold transition-colors ${
-                      theme === undefined
-                        ? "bg-teal-600 text-white shadow-sm"
-                        : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-teal-50 hover:text-teal-700"
-                    }`}
-                  >
-                    ✨ 전체 3선
-                  </button>
                   {COURSE_THEMES.map((t) => {
                     const meta = COURSE_THEME_META[t];
                     const active = theme === t;
