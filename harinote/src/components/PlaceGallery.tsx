@@ -5,7 +5,7 @@
  * 서버가 URL 목록을 넘겨주면(images) 대표 1장 + 썸네일 스트립으로 표시하고,
  * 썸네일/대표 클릭 시 라이트박스로 확대한다. 이미지 로드 실패는 해당 장만 숨긴다.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import type { PlaceEnvType } from "@/lib/tour/types";
 
@@ -46,6 +46,22 @@ export default function PlaceGallery({
   const [broken, setBroken] = useState<Set<string>>(() => new Set());
   const [active, setActive] = useState(0);
   const [lightbox, setLightbox] = useState(false);
+
+  // aria-modal 다이얼로그는 Esc로 닫혀야 한다 — 없으면 닫기 버튼까지 Tab으로 가야만 빠져나온다.
+  // 열려 있는 동안 배경 스크롤도 잠근다 (전체화면 위로 본문이 흐르면 어디를 보는지 흐려진다)
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setLightbox(false);
+    };
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [lightbox]);
 
   const frame = FRAME[ratio];
   const usable = images.filter((url) => !broken.has(url));
