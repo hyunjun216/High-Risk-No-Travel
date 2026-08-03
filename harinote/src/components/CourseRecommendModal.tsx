@@ -142,7 +142,7 @@ export default function CourseRecommendModal({
             : "bg-white text-teal-700 ring-1 ring-teal-600/40 hover:bg-teal-50"
         }`}
       >
-        🗓 하루 코스 추천
+        하루 코스 추천
       </button>
 
       {/* sticky 패널 안은 스태킹 컨텍스트라 z-50이 갇힌다 — body로 포털 (마운트 후에만) */}
@@ -165,7 +165,7 @@ export default function CourseRecommendModal({
           <div className="relative flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl bg-slate-50 sm:rounded-3xl">
             <div className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-3.5">
               <h2 className="text-base font-extrabold text-slate-900">
-                🗓 하루 코스 추천
+                하루 코스 추천
               </h2>
               <button
                 type="button"

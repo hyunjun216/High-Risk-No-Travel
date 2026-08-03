@@ -312,7 +312,7 @@ export default function TravelPlannerPanel({
               }${transport === "car" ? "&tr=car" : ""}`}
               className="rounded-lg px-2 py-1 text-xs font-bold text-teal-700 ring-1 ring-teal-600/40 transition-colors hover:bg-teal-50"
             >
-              📄 리포트
+              리포트
             </Link>
             <button
               type="button"
@@ -605,7 +605,7 @@ export default function TravelPlannerPanel({
                       {dragOverSlot === slot
                         ? "여기에 놓기"
                         : slot === "lodging"
-                          ? "🧳 풀코스 추천으로 숙소도 함께 받아보세요"
+                          ? "풀코스 추천으로 숙소도 함께 받아보세요"
                           : "여기로 드래그해서 담기"}
                     </p>
                   ) : (

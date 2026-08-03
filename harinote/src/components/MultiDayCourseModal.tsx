@@ -157,7 +157,7 @@ export default function MultiDayCourseModal({
   // 바꾸면 "그 버튼"으로 기억할 수가 없다.
   // 담아둔 곳이 있을 때 "풀코스"가 덮어쓰기로 읽히지 않게, 아래 부제와 최종 버튼
   // ("빈 시간에 채우기 N곳")이 병합임을 정확히 말한다
-  const title = "🧳 풀코스 추천";
+  const title = "풀코스 추천";
 
   return (
     <>
