@@ -261,6 +261,7 @@ describe("buildChecklist — 중복 없음", () => {
 
 describe("buildPlanChecklist — 계획(요인) 기반", () => {
   const f = (key: string, value: number) => ({ key, value }) as never;
+
   it("스톱들의 감점 요인 합집합으로 준비물을 만든다", () => {
     const items = buildPlanChecklist(
       [
@@ -272,7 +273,6 @@ describe("buildPlanChecklist — 계획(요인) 기반", () => {
     expect(items).toContain("생수·모자·자외선 차단제 챙기기");
     expect(items).toContain("보건용 마스크(KF80 이상) 챙기기");
     expect(items).toContain("상비약 지참, 이동 경로의 병원 위치 확인하기");
-    expect(items).toContain("출발 전 기상특보 확인하기(기상청)");
   });
 
   it("열쾌적 감점이 추위 쪽(저온)이면 폭염 대신 방한 준비물", () => {
@@ -284,29 +284,19 @@ describe("buildPlanChecklist — 계획(요인) 기반", () => {
     expect(items.join()).not.toContain("생수");
   });
 
-  it("수변형 스톱의 강수 요인은 급류 경고를 추가한다", () => {
+  it("한파도 방한 준비물로 이어진다", () => {
     const items = buildPlanChecklist(
-      [{ riskFactors: [f("rain", 70)], envType: "outdoor_water" }],
-      "default",
-    );
-    expect(items).toContain("계곡 수위 변화 주의 — 상류 호우 시 즉시 대피");
-  });
-
-  it("한파·산사태 등 계절 모드 요인도 문구가 있다", () => {
-    const items = buildPlanChecklist(
-      [{ riskFactors: [f("cold", -15), f("landslide", 2)], envType: "outdoor_mountain" }],
+      [{ riskFactors: [f("cold", -15)], envType: "outdoor_mountain" }],
       "default",
     );
     expect(items).toContain("방한복·핫팩 등 한파 대비하기");
-    expect(items).toContain("산사태 예보·입산 통제 확인, 산악·계곡 구간 우회 대비하기");
   });
 
-  it("아이·부모님 동반 복합 프로필은 강화 문구를 모두 포함한다", () => {
+  it("부모님 동반이면 복용약 문구가 붙는다", () => {
     const items = buildPlanChecklist(
-      [{ riskFactors: [f("heat", 34), f("medical", 25)], envType: "outdoor_general" }],
+      [{ riskFactors: [f("medical", 25)], envType: "outdoor_general" }],
       "with_kids_seniors",
     );
-    expect(items).toContain("아이 컨디션(더위 먹음 신호) 자주 확인하기");
     expect(items).toContain("부모님 평소 복용약 챙기기");
   });
 
@@ -315,10 +305,24 @@ describe("buildPlanChecklist — 계획(요인) 기반", () => {
       [{ riskFactors: [], envType: "indoor" }],
       "default",
     );
-    expect(items).toEqual([
-      "출발 전 기상특보 확인하기(기상청)",
-      "여행 일정 가족·지인과 공유하기",
-    ]);
+    expect(items).toEqual(["여행 일정 가족·지인과 공유하기"]);
+  });
+
+  // 현장에서 조심할 일은 값과 날짜를 담아야 뜻이 통해서 cautions.ts가 맡는다.
+  // 여기 남으면 "계곡 수위 주의"가 준비물 체크박스로 나온다.
+  it("가방에 넣을 것이 아닌 문구는 준비물에 넣지 않는다", () => {
+    const items = buildPlanChecklist(
+      [
+        { riskFactors: [f("rain", 70), f("forest_fire", 3)], envType: "outdoor_water" },
+        { riskFactors: [f("landslide", 2), f("heat", 34)], envType: "outdoor_mountain" },
+      ],
+      "with_kids",
+    );
+    expect(items.join()).not.toContain("계곡 수위");
+    expect(items.join()).not.toContain("화기");
+    expect(items.join()).not.toContain("산사태");
+    expect(items.join()).not.toContain("기상특보");
+    expect(items.join()).not.toContain("아이 컨디션");
   });
 
   it("여러 스톱이 같은 요인이어도 중복되지 않는다", () => {

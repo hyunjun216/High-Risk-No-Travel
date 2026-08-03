@@ -14,11 +14,11 @@ import { getPlace } from "@/lib/datasource";
 import { lodgingById, type LodgingPlace } from "@/lib/tour/lodging";
 import type { Place } from "@/lib/tour/types";
 import { buildPlanChecklist } from "@/lib/report/checklist";
-import { medicalDataSource, nearestHospital } from "@/lib/risk/medical";
-import { shelterDataSource } from "@/lib/risk/shelter";
+import { buildPlanCautions } from "@/lib/report/cautions";
+import { nearestHospital } from "@/lib/risk/medical";
 import { hasLiveRiskKeys } from "@/lib/risk/live";
 import { hasForestKey } from "@/lib/risk/forest";
-import { GRADE_LABEL, PROFILE_LABEL } from "@/lib/safety/types";
+import { PROFILE_LABEL } from "@/lib/safety/types";
 import {
   PLAN_SLOTS,
   SLOT_META,
@@ -27,8 +27,8 @@ import {
 } from "@/lib/travel-plan";
 import { addDaysISO, formatKoreanDate, todayISOSeoul } from "@/lib/date";
 import { parseProfile, type SearchParamValue } from "@/components/search-params";
+import CourseRouteMap from "@/components/CourseRouteMap";
 import ReportActions from "@/components/ReportActions";
-import ImportPlanButton from "@/components/ImportPlanButton";
 
 interface Props {
   searchParams: Promise<Record<string, SearchParamValue>>;
@@ -103,19 +103,59 @@ export default async function PlanReportPage({ searchParams }: Props) {
     })),
     profile,
   );
+  const cautions = buildPlanCautions(
+    rows.map((r) => ({
+      dateISO: r.stop.dateISO,
+      title: r.place.title,
+      envType: r.place.envType,
+      riskFactors: r.stop.riskFactors,
+    })),
+    profile,
+  );
 
   const dayLabel = (day: number) =>
     q.from ? `${day}일차 · ${formatKoreanDate(addDaysISO(q.from, day - 1))}` : `${day}일차`;
 
+  // 실연동 키가 없으면 기상·미세먼지·산불위험은 시범값이다 — 쓰지도 않은 기관을
+  // 출처로 적으면 종이만 받아 본 사람에게는 확인할 방법이 없는 거짓말이 된다
+  const liveKeys = hasLiveRiskKeys();
+  const forestKey = liveKeys && hasForestKey();
+  const dataSources = [
+    "한국관광공사 TourAPI",
+    ...(liveKeys ? ["기상청", "AirKorea"] : []),
+    ...(forestKey ? ["산림청"] : []),
+    "국립중앙의료원",
+    "행정안전부",
+  ].join(" · ");
+  const trialNote = !liveKeys
+    ? " 기상·미세먼지·산불위험은 시범값 기준입니다."
+    : !forestKey
+      ? " 산불위험은 시범값 기준입니다."
+      : "";
+
+  // 제목 옆 여행 기간. 출발일이 없으면 날짜를 지어낼 수 없으므로 무엇을 기준으로
+  // 채점했는지라도 밝힌다 (diagnosePlan이 오늘 출발로 가정해 계산한다)
+  const tripRange = q.from
+    ? days === 1
+      ? formatKoreanDate(q.from)
+      : `${formatKoreanDate(q.from)} → ${formatKoreanDate(addDaysISO(q.from, days - 1))}`
+    : "출발일 미설정 · 오늘 기준";
+
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8 print:max-w-none print:px-0 print:py-0">
-      {/* 인쇄 시 사이트 헤더·푸터 숨김 + A4 맞춤 — 이 라우트에만 적용 */}
+    // 종이 폭이 정확히 A4(210mm)가 되도록 좌우 여백(px-4)만큼 상한을 넓혀 잡는다
+    <div className="mx-auto w-full max-w-[calc(210mm_+_2rem)] px-4 py-8 print:max-w-none print:px-0 print:py-0">
+      {/* 인쇄 시 사이트 헤더·푸터 숨김 + A4 맞춤 — 이 라우트에만 적용.
+          화면 종이는 미디어쿼리로 직접 쓴다 — sm:와 print: 유틸리티를 겹치면
+          인쇄 폭(A4≈794px)이 sm 분기점을 넘어 화면용 여백이 인쇄물에 따라붙는다 */}
       <style>{`
         @media print {
           @page { size: A4; margin: 10mm 12mm; }
           body > header, body > footer { display: none !important; }
           body { background: #fff !important; }
           section { break-inside: avoid; }
+        }
+        @media screen and (min-width: 640px) {
+          .a4-sheet { min-height: 297mm; padding: 10mm 12mm; }
         }
       `}</style>
 
@@ -126,42 +166,23 @@ export default async function PlanReportPage({ searchParams }: Props) {
         <span aria-hidden="true">←</span> 저장한 계획으로 돌아가기
       </Link>
 
-      <article className="mt-4 rounded-2xl bg-white p-6 ring-1 ring-slate-200 print:mt-0 print:rounded-none print:p-0 print:ring-0">
+      {/* A4 한 장(.a4-sheet) — 안쪽 여백이 @page 여백과 같아 화면 줄바꿈이 인쇄물과 일치한다.
+          좁은 화면에서는 폭만 줄인다 (A4 비율로 강제 축소하면 글씨가 읽을 수 없게 작아진다) */}
+      <article className="a4-sheet mt-4 bg-white px-5 py-6 shadow-lg ring-1 ring-slate-200 print:mt-0 print:p-0 print:shadow-none print:ring-0">
         {/* ① 헤더 */}
         <header className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-4 print:pb-3">
-          <div>
+          <div className="min-w-0">
             <p className="text-xs font-bold tracking-wide text-teal-700">
-              하리노트 · 여행 계획 리포트
+              하리노트 · High Risk, No Travel
             </p>
-            <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-900 print:text-xl">
+            <h1 className="mt-1 flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 text-2xl font-extrabold tracking-tight text-slate-900 print:text-xl">
               {q.name ?? "내 여행 계획"}
+              <span className="text-base font-bold text-slate-400 print:text-sm">
+                {tripRange}
+              </span>
             </h1>
-            <p className="mt-1 text-sm text-slate-500">
-              {q.from
-                ? `${formatKoreanDate(q.from)} 출발 · ${days === 1 ? "당일" : `${days - 1}박 ${days}일`}`
-                : `${days === 1 ? "당일" : `${days}일`} 일정 · 출발일 미설정(오늘 출발 기준)`}
-              {" · "}
-              {PROFILE_LABEL[profile]} 기준 · 스톱 {rows.length}곳
-            </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2 print:hidden">
-            <ReportActions />
-            {/* 공유받은 사람이 이 계획을 자기 플래너로 가져가는 경로 */}
-            <ImportPlanButton
-              items={rows.map(({ stop, place, slot, isLodging }) => ({
-                contentId: place.contentId,
-                title: place.title,
-                lat: place.lat,
-                lng: place.lng,
-                score: stop.score ?? undefined,
-                day: stop.day,
-                slot,
-                ...(isLodging ? { kind: "lodging" as const } : {}),
-              }))}
-              nights={days - 1}
-              from={q.from}
-            />
-          </div>
+          <ReportActions />
         </header>
 
         {/* 출발일이 지난 계획 — diagnosePlan이 조용히 오늘 기준으로 다시 계산한다(assumedToday).
@@ -203,117 +224,153 @@ export default async function PlanReportPage({ searchParams }: Props) {
           )}
         </section>
 
-        {/* ③ 일차별 점검 */}
+        {/* ③ 준비물·주의할 점 — 출발 전에 읽을 것이라 일차별 점검보다 앞에 둔다 */}
+        <section className="mt-6 grid gap-x-6 gap-y-5 sm:grid-cols-2 print:mt-4 print:grid-cols-2">
+          <div>
+            <h2 className="text-base font-bold text-slate-900">
+              준비물 체크리스트
+              <span className="ml-1.5 text-xs font-semibold text-slate-400">
+                {PROFILE_LABEL[profile]} 기준
+              </span>
+            </h2>
+            <ul className="mt-2 space-y-1.5">
+              {checklist.map((item) => (
+                <li key={item} className="flex items-start gap-2 text-sm text-slate-700">
+                  <span
+                    aria-hidden="true"
+                    className="mt-0.5 inline-block h-4 w-4 shrink-0 rounded border border-slate-300"
+                  />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+          {cautions.length > 0 && (
+            <div>
+              <h2 className="text-base font-bold text-slate-900">주의할 점</h2>
+              <ul className="mt-2 space-y-2">
+                {cautions.map(({ key, text }) => (
+                  <li
+                    key={key}
+                    className="flex items-start gap-2 text-sm leading-relaxed text-slate-700"
+                  >
+                    <span aria-hidden="true" className="shrink-0 text-amber-500">
+                      ⚠
+                    </span>
+                    {text}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+
+        {/* ④ 일차별 점검 — 시간 슬롯을 왼쪽 축으로 세워 하루 흐름이 보이게 한다 */}
         {byDay.map((dayRows, i) =>
           dayRows.length === 0 ? null : (
             <section key={i} className="mt-6 print:mt-4">
-              <h2 className="text-base font-bold text-slate-900">{dayLabel(i + 1)}</h2>
-              <ul className="mt-2 space-y-2">
-                {dayRows.map(({ stop, place, slot, isLodging }) => {
+              <h2 className="text-base font-bold text-slate-900">
+                {dayLabel(i + 1)}
+                {/* 점수 근거는 날짜가 정하므로 하루에 한 번만 밝힌다 (스톱마다 반복하지 않는다) */}
+                <span className="ml-1.5 text-xs font-semibold text-slate-400">
+                  {STOP_MODE_LABEL[dayRows[0].stop.mode]}
+                </span>
+              </h2>
+              <ul className="mt-2">
+                {dayRows.map(({ stop, place, slot, isLodging }, j) => {
                   const hospital = nearestHospital(place.lat, place.lng, place.contentId);
+                  const last = j === dayRows.length - 1;
                   return (
-                    <li
-                      key={stop.contentId}
-                      className="rounded-xl bg-slate-50 px-4 py-2.5 ring-1 ring-slate-200"
-                    >
-                      <p className="text-sm font-bold text-slate-800">
-                        {slot && (
-                          <span className="mr-1.5 text-xs font-semibold text-slate-400">
-                            <span aria-hidden="true">{SLOT_META[slot].emoji}</span>{" "}
-                            {SLOT_META[slot].label}
-                          </span>
-                        )}
-                        {/* 숙박도 상세로 연결된다 (places/[contentId] 폴백) */}
-                        <Link
-                          href={`/places/${place.contentId}`}
-                          className="hover:underline"
-                        >
-                          {place.title}
-                        </Link>
-                        {isLodging && (
-                          <span className="ml-1.5 text-xs font-semibold text-slate-400">
-                            숙박(참고)
-                          </span>
-                        )}
-                        {stop.score !== null && stop.grade !== null ? (
+                    <li key={stop.contentId} className="flex gap-3">
+                      {/* 시간 축 — 라벨 아래 세로선이 다음 스톱까지 이어진다 */}
+                      <div className="flex w-11 shrink-0 flex-col items-center">
+                        <span className="text-xs font-bold text-slate-500">
+                          {slot ? SLOT_META[slot].label : "일정"}
+                        </span>
+                        {!last && (
                           <span
-                            className={`float-right font-extrabold tabular-nums ${GRADE_TEXT_CLASS[stop.grade]}`}
-                          >
-                            {stop.grade !== "low" && "⚠ "}
-                            {stop.score}점
-                          </span>
-                        ) : (
-                          <span className="float-right text-xs font-semibold text-slate-400">
-                            점수 데이터 없음
-                          </span>
+                            aria-hidden="true"
+                            className="mt-1.5 w-px flex-1 bg-slate-200"
+                          />
                         )}
-                      </p>
-                      <p className="mt-0.5 text-xs text-slate-500">
-                        {stop.grade !== null && (
-                          <>
-                            {GRADE_LABEL[stop.grade]}
-                            <span className="text-slate-300"> · </span>
-                          </>
-                        )}
-                        {STOP_MODE_LABEL[stop.mode]}
-                        {stop.topFactors.length > 0 && (
-                          <>
-                            <span className="text-slate-300"> · </span>
-                            {stop.topFactors
-                              .map((f) => `${f.label} −${f.points}점`)
-                              .join(" · ")}
-                          </>
+                      </div>
+                      <div className={`min-w-0 flex-1 ${last ? "" : "pb-4"}`}>
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="min-w-0 text-sm font-bold text-slate-800">
+                            {/* 숙박도 상세로 연결된다 (places/[contentId] 폴백) */}
+                            <Link
+                              href={`/places/${place.contentId}`}
+                              className="hover:underline"
+                            >
+                              {place.title}
+                            </Link>
+                            {isLodging && (
+                              <span className="ml-1.5 text-xs font-semibold text-slate-400">
+                                숙박(참고)
+                              </span>
+                            )}
+                          </p>
+                          {stop.score !== null && stop.grade !== null ? (
+                            <span
+                              className={`shrink-0 text-sm font-extrabold tabular-nums ${GRADE_TEXT_CLASS[stop.grade]}`}
+                            >
+                              {stop.grade !== "low" && "⚠ "}
+                              {stop.score}점
+                            </span>
+                          ) : (
+                            <span className="shrink-0 text-xs font-semibold text-slate-400">
+                              점수 데이터 없음
+                            </span>
+                          )}
+                        </div>
+                        {place.addr && (
+                          <p className="mt-0.5 text-xs text-slate-500">{place.addr}</p>
                         )}
                         {hospital && (
-                          <>
-                            <span className="text-slate-300"> · </span>
+                          <p className="mt-0.5 text-xs text-slate-400">
                             응급의료 {hospital.name}{" "}
                             <span className="tabular-nums">
                               {hospital.km.toFixed(1)}km
                             </span>
-                          </>
+                          </p>
                         )}
-                      </p>
+                      </div>
                     </li>
                   );
                 })}
               </ul>
               {dayRows.length >= 2 && (
-                <p className="mt-1.5 text-xs font-semibold text-slate-500">
-                  이동 직선{" "}
-                  <span className="tabular-nums">
-                    {totalDistanceKm(
-                      dayRows.map(({ place }) => ({
-                        contentId: place.contentId,
+                <>
+                  <p className="mt-1.5 text-xs font-semibold text-slate-500">
+                    이동 직선{" "}
+                    <span className="tabular-nums">
+                      {totalDistanceKm(
+                        dayRows.map(({ place }) => ({
+                          contentId: place.contentId,
+                          title: place.title,
+                          lat: place.lat,
+                          lng: place.lng,
+                        })),
+                      )}
+                      km
+                    </span>{" "}
+                    — 실제 소요 시간은 지도 앱에서 확인하세요
+                  </p>
+                  {/* 하루 동선 지도 — 타일 이미지라 인쇄물에서는 뺀다 */}
+                  <div className="mt-2 print:hidden">
+                    <CourseRouteMap
+                      stops={dayRows.map(({ place }) => ({
                         title: place.title,
                         lat: place.lat,
                         lng: place.lng,
-                      })),
-                    )}
-                    km
-                  </span>{" "}
-                  — 실제 소요 시간은 지도 앱에서 확인하세요
-                </p>
+                      }))}
+                    />
+                  </div>
+                </>
               )}
             </section>
           ),
         )}
-
-        {/* ④ 준비물 체크리스트 */}
-        <section className="mt-6 print:mt-4">
-          <h2 className="text-base font-bold text-slate-900">준비물 체크리스트</h2>
-          <ul className="mt-2 grid gap-x-4 gap-y-1.5 sm:grid-cols-2 print:grid-cols-2">
-            {checklist.map((item) => (
-              <li key={item} className="flex items-start gap-2 text-sm text-slate-700">
-                <span
-                  aria-hidden="true"
-                  className="mt-0.5 inline-block h-4 w-4 shrink-0 rounded border border-slate-300"
-                />
-                {item}
-              </li>
-            ))}
-          </ul>
-        </section>
 
         {/* ⑤ 대체 플랜 — 주의 스톱의 같은 날짜 기준 교체 후보 */}
         {riskyRows.some((r) => r.stop.alternatives.length > 0) && (
@@ -350,28 +407,12 @@ export default async function PlanReportPage({ searchParams }: Props) {
           </section>
         )}
 
-        {/* ⑥ 응급 안내 + 푸터 */}
-        <section className="mt-6 print:mt-4">
-          <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm font-bold text-red-700 ring-1 ring-slate-200">
-            위급 시 지체 없이 119에 신고하세요.
-          </p>
-        </section>
-
-        <footer className="mt-6 border-t border-slate-200 pt-3 text-xs leading-relaxed text-slate-400 print:mt-4">
-          <p>
-            본 리포트는 공공데이터 기반 참고 정보이며 안전을 보장하지 않습니다.
-            방문 전 기상특보와 현지 안내를 반드시 확인하세요. 미래 일차 점수는
-            단기예보(내일~3일 뒤) 또는 30년 계절 통계 기준 추정치입니다.
-          </p>
-          <p className="mt-1">
-            데이터 출처: 한국관광공사 TourAPI · {medicalDataSource()} · {shelterDataSource()}
-            {hasLiveRiskKeys()
-              ? hasForestKey()
-                ? " · 기상청 · AirKorea(한국환경공단) · 산림청(산불위험예보)."
-                : " · 기상청 · AirKorea(한국환경공단). 산불위험은 실연동 준비 중인 시범값입니다."
-              : ". 기상·미세먼지·산불위험은 시범값 기준입니다."}
-          </p>
-        </footer>
+        {/* 참고 정보 고지·출처 — 종이만 받아 본 사람에게는 이 줄이 유일한 근거 표시다
+            (화면에는 사이트 푸터에도 있지만 인쇄에서는 그쪽이 숨겨진다) */}
+        <p className="mt-4 text-[11px] leading-relaxed text-slate-400 print:mt-3">
+          공공데이터 기반 참고 정보입니다 — 안전을 보장하지 않습니다.{trialNote} 출처:{" "}
+          {dataSources}
+        </p>
       </article>
     </div>
   );
