@@ -299,15 +299,18 @@ export default function TravelPlannerPanel({
             <span className="ml-1.5 text-sm font-semibold text-teal-600">{count}</span>
           )}
         </h2>
+        {/* 셋의 시각 무게를 역할에 맞춘다 — 리포트는 계획을 들고 나가는 출구(주 행동),
+            저장은 보조, 비우기는 되돌릴 수 없으니 조용하게. 이전엔 셋 다 slate-400이라
+            흰 배경 대비 약 3:1로 작은 글씨 기준 WCAG AA(4.5:1)에 못 미쳤다 */}
         {hydrated && count > 0 && (
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
             <Link
               href={`/plans/report?${encodePlanQuery(plan)}${
                 profile !== "default" ? `&profile=${profile}` : ""
               }${transport === "car" ? "&tr=car" : ""}`}
-              className="text-xs font-semibold text-slate-400 transition-colors hover:text-teal-600"
+              className="rounded-lg px-2 py-1 text-xs font-bold text-teal-700 ring-1 ring-teal-600/40 transition-colors hover:bg-teal-50"
             >
-              리포트
+              📄 리포트
             </Link>
             <button
               type="button"
@@ -315,12 +318,12 @@ export default function TravelPlannerPanel({
                 setSaveName(defaultName);
                 setSaving((v) => !v);
               }}
-              className={`text-xs font-semibold transition-colors ${
+              className={`px-1 text-xs font-semibold transition-colors ${
                 savedFlash === "ok"
                   ? "text-teal-600"
                   : savedFlash === "fail"
                     ? "text-red-500"
-                    : "text-slate-400 hover:text-teal-600"
+                    : "text-slate-600 hover:text-teal-600"
               }`}
             >
               {savedFlash === "ok"
@@ -335,7 +338,7 @@ export default function TravelPlannerPanel({
                 setSaving(false);
                 clear();
               }}
-              className="text-xs font-semibold text-slate-400 transition-colors hover:text-red-500"
+              className="px-1 text-xs font-semibold text-slate-500 transition-colors hover:text-red-500"
             >
               비우기
             </button>
@@ -370,7 +373,7 @@ export default function TravelPlannerPanel({
         </form>
       )}
 
-      {/* AI 코스 추천 — 팝업에서 테마·지역 선택 후 활성 일차에 담기 (동행·이동수단은 검색 필터 상속) */}
+      {/* 하루 코스 추천 — 팝업에서 테마·지역 선택 후 활성 일차에 담기 (동행·이동수단은 검색 필터 상속) */}
       <div className="space-y-2 border-b border-slate-100 px-4 py-2.5">
         <CourseRecommendModal
           date={courseDate}
@@ -378,7 +381,7 @@ export default function TravelPlannerPanel({
           transport={transport}
           sigunguCodes={sigunguCodes}
         />
-        {/* 담긴 곳이 있으면 "빈 슬롯 채우기", 비어 있는 N박이면 전체 일정 추천 */}
+        {/* 담긴 곳이 있으면 빈 시간대만, 비어 있는 N박이면 전체 일정 (이름은 고정) */}
         {hydrated && (days > 1 || count > 0) && (
           <MultiDayCourseModal
             profile={profile}
@@ -597,7 +600,7 @@ export default function TravelPlannerPanel({
                       {dragOverSlot === slot
                         ? "여기에 놓기"
                         : slot === "lodging"
-                          ? "✨ 빈 슬롯 채우기로 숙소 추천을 받아보세요"
+                          ? "✨ 일정 자동 완성으로 숙소 추천을 받아보세요"
                           : "여기로 드래그해서 담기"}
                     </p>
                   ) : (

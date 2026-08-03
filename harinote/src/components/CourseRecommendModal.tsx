@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * AI 코스 추천 팝업 — 플래너 패널에서 열어 테마·지역을 고르면
+ * 하루 코스 추천 팝업 — 플래너 패널에서 열어 테마·지역을 고르면
  * 서버 액션(recommendCourses)으로 코스를 만들고, 코스를 현재 활성 일차에
  * 통째로 담는다. 동행·이동수단은 검색 필터(여행 조건 패널)에서 자동 상속.
  * (sigungu, profile, transport) 조합당 1회만 호출하고 테마 전환은 로컬 필터.
@@ -132,7 +132,7 @@ export default function CourseRecommendModal({
         onClick={openModal}
         className="w-full rounded-xl bg-teal-600 px-3 py-2 text-sm font-bold text-white shadow-sm transition-colors hover:bg-teal-700"
       >
-        🤖 AI 코스 추천
+        🗓 하루 코스 추천
       </button>
 
       {/* sticky 패널 안은 스태킹 컨텍스트라 z-50이 갇힌다 — body로 포털 (마운트 후에만) */}
@@ -142,7 +142,7 @@ export default function CourseRecommendModal({
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="AI 코스 추천"
+          aria-label="하루 코스 추천"
           className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6"
         >
           {/* 배경 */}
@@ -155,7 +155,7 @@ export default function CourseRecommendModal({
           <div className="relative flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl bg-slate-50 sm:rounded-3xl">
             <div className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-3.5">
               <h2 className="text-base font-extrabold text-slate-900">
-                🤖 AI 코스 추천
+                🗓 하루 코스 추천
               </h2>
               <button
                 type="button"

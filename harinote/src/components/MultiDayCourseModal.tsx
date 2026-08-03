@@ -152,9 +152,9 @@ export default function MultiDayCourseModal({
     return rows.sort((a, b) => slotOrder(a.slot) - slotOrder(b.slot));
   };
 
-  const title = hasAnchors
-    ? "✨ 빈 슬롯 채우기"
-    : `🧳 ${days - 1}박 전체 일정 추천`;
+  // 담긴 곳 유무로 동작은 갈리지만(빈 시간만 채움 / 전체 일정) 이름은 고정한다 —
+  // 같은 버튼이 이름을 바꾸면 "그 버튼"으로 기억할 수가 없다
+  const title = "✨ 일정 자동 완성";
 
   return (
     <>
@@ -249,7 +249,7 @@ export default function MultiDayCourseModal({
                 </p>
               ) : result && result.fills.length === 0 ? (
                 <p className="rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-                  이 조건으로 채울 빈 슬롯을 찾지 못했어요 — 다른 테마를
+                  이 조건으로 채울 빈 시간대를 찾지 못했어요 — 다른 테마를
                   선택하거나, 이미 모든 시간대가 채워져 있는지 확인해 보세요.
                 </p>
               ) : result ? (
@@ -330,7 +330,7 @@ export default function MultiDayCourseModal({
                   >
                     {saveFailed
                       ? "저장 못 했어요"
-                      : `빈 슬롯에 채우기 (${result.fills.length}곳)`}
+                      : `빈 시간에 채우기 (${result.fills.length}곳)`}
                   </button>
                 </>
               ) : null}
