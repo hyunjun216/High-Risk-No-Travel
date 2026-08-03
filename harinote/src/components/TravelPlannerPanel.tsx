@@ -600,7 +600,7 @@ export default function TravelPlannerPanel({
                       {dragOverSlot === slot
                         ? "여기에 놓기"
                         : slot === "lodging"
-                          ? "✨ 일정 자동 완성으로 숙소 추천을 받아보세요"
+                          ? "🧳 풀코스 추천으로 숙소도 함께 받아보세요"
                           : "여기로 드래그해서 담기"}
                     </p>
                   ) : (
