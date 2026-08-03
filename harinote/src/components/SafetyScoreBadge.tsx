@@ -1,7 +1,8 @@
 import type { RiskLevel } from "@/lib/safety/types";
 import { GRADE_LABEL } from "@/lib/safety/types";
 
-const GRADE_STYLE: Record<
+/** 등급 색 팔레트 — 배지 밖에서 같은 색으로 카드를 짤 때 재사용한다 (상세 점수 요약 등) */
+export const GRADE_STYLE: Record<
   RiskLevel,
   { pill: string; dot: string; text: string; ring: string }
 > = {

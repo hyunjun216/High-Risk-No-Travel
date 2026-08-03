@@ -2,8 +2,8 @@
  * 감점을 쾌적층/안전층으로 가르는 순수 로직.
  *
  * 분류 근거는 lib/safety/types.ts COMFORT_FACTOR_KEYS 주석 참고.
- * 화면 표시(RiskLayerSummary)와 코스 스톱 자격 판정(course/*)이 같은 정의를 쓴다 —
- * "사용자에게 보여주는 안전층"과 "추천에서 거르는 안전층"이 달라지면 설명이 무너진다.
+ * 쓰는 곳은 코스 스톱 자격 판정(course/*) 하나뿐이다 — 화면은 총점과 요인별 내역만
+ * 보여주고 층을 나누지 않는다. 사용자에게 감점은 하나다.
  */
 import { COMFORT_FACTOR_KEYS, type RiskBreakdown, type RiskFactor } from "@/lib/safety/types";
 import { COURSE_MIN_STOP_SCORE } from "@/lib/safety/weights";

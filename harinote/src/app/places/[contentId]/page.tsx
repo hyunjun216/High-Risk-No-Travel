@@ -11,8 +11,7 @@ import {
 } from "@/lib/datasource";
 import { formatKoreanDate } from "@/lib/date";
 import { ENV_TYPE_LABEL, placeTypeLabel } from "@/lib/tour/types";
-import { PROFILE_LABEL } from "@/lib/safety/types";
-import RiskLayerSummary from "@/components/RiskLayerSummary";
+import { GRADE_LABEL, PROFILE_LABEL } from "@/lib/safety/types";
 import { Suspense } from "react";
 import { recommendAlternatives } from "@/lib/reco/alternatives";
 import { buildHalfDayCourse } from "@/lib/course/half-day";
@@ -29,7 +28,7 @@ import { summaryOf } from "@/lib/tour/summaries";
 import AddToPlanButton from "@/components/AddToPlanButton";
 import ProfileChips from "@/components/ProfileChips";
 import RiskBreakdownBar from "@/components/RiskBreakdownBar";
-import SafetyScoreBadge from "@/components/SafetyScoreBadge";
+import SafetyScoreBadge, { GRADE_STYLE } from "@/components/SafetyScoreBadge";
 import RangeDayStrip from "@/components/RangeDayStrip";
 import {
   parseDateRange,
@@ -45,7 +44,7 @@ import {
   savedProfile,
   savedTransport,
 } from "@/lib/prefs";
-import { CAR_DISTANCE_KM } from "@/lib/reco/alternatives";
+import { CAR_DISTANCE_KM, MAX_DISTANCE_KM } from "@/lib/reco/alternatives";
 import PrefsPersist from "@/components/PrefsPersist";
 
 interface Props {
@@ -142,6 +141,8 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
 
   // 자차는 후보 반경 확대 (대체지 30→50km, 코스 ×1.5) — 직선거리 기준 후보 추리기
   const altMaxKm = transport === "car" ? CAR_DISTANCE_KM : undefined;
+  // 화면 문구용 실제 반경 — 안내문과 "못 찾았어요" 문구가 같은 숫자를 말해야 한다
+  const altRangeKm = altMaxKm ?? MAX_DISTANCE_KM;
   const alternatives = recommendAlternatives(
     { ...place, safety },
     candidates,
@@ -230,35 +231,168 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
       </div>
 
       {/*
-        상단 — 좌: 사진 / 우: 어떤 곳인가(요약·소개) 위, 어디인가(지도) 아래.
+        본문 — 좌: 이 점수 이야기(사진 → 점수 → 근거) / 우: 이 장소 이야기(요약·소개·지도·후기·동행).
         사진이 전폭이던 시절엔 1152×320의 납작한 띠라 원본 위아래가 크게 잘리고,
         그 띠가 본문을 통째로 아래로 밀어냈다. 절반 컬럼(≈544px) + 3:2로 바꾸면
         잘림이 10% 내외로 줄고 남는 오른쪽이 첫 화면 정보량이 된다.
+
+        ⚠ 그리드를 **하나만** 쓴다. 예전엔 상단(사진|지도)·하단(근거|후기)으로 그리드가
+        둘이었는데, 두 컬럼 높이가 같을 리 없어 이음매마다 구멍이 났다
+        (실측: 사진+점수 594px vs 요약+소개+지도 416px → 지도 아래 178px 공백).
+        컬럼당 그리드 자식을 하나로 두면 두 컬럼이 각자 흐르므로 중간 구멍이 사라지고,
+        남는 여백은 짧은 컬럼 맨 끝 한 곳에만 모인다.
         min-w-0: 그리드 자식의 min-width:auto가 내부 가로 스크롤러(썸네일 스트립)를
         밀어내 페이지 전체가 가로로 넘치는 것을 막는다 — 자식마다 필요하다.
         items-start: 없으면 셀이 stretch돼 짧은 쪽 카드가 세로로 늘어난다.
       */}
       <div className="mt-6 grid gap-8 lg:grid-cols-2 lg:items-start">
-        {/* 대표사진 즉시, detailImage2 추가 사진은 스트리밍 */}
-        <div className="min-w-0">
-          <Suspense
-            fallback={
-              <PlaceGallery
+        <div className="min-w-0 space-y-6">
+          {/* 대표사진 즉시, detailImage2 추가 사진은 스트리밍 */}
+          <div>
+            <Suspense
+              fallback={
+                <PlaceGallery
+                  title={place.title}
+                  envType={place.envType}
+                  images={place.imageUrl ? [place.imageUrl] : []}
+                  ratio="half"
+                />
+              }
+            >
+              <GallerySection
+                contentId={contentId}
                 title={place.title}
                 envType={place.envType}
-                images={place.imageUrl ? [place.imageUrl] : []}
+                imageUrl={place.imageUrl}
                 ratio="half"
               />
-            }
+            </Suspense>
+          </div>
+
+          {/*
+            안전 점수 요약 — 사진 바로 아래.
+            사진만으로는 왼쪽 컬럼이 짧아 밑이 비었다. 그 자리를 페이지의 핵심 숫자가
+            채우면 빈칸이 사라지고 점수가 첫 화면 안에 들어온다.
+            점수·등급·동행 조건을 한 카드에 묶은 이유: 이전에는 세 덩어리로 흩어져 있어
+            "몇 점인지"를 알기까지 세 번 시선을 옮겨야 했다.
+          */}
+          {/* 테두리는 단일 점수일 때만 등급색. 계절 모드는 통상일·궂은날 두 점수를
+              같이 보여주므로, 한 등급색으로 칠하면 나머지 하나를 잘못 대변한다
+              (통상일 낮음 + 궂은날 높음인데 카드가 초록으로 보이는 문제) */}
+          <div
+            className={`rounded-2xl bg-white p-4 ring-1 ${
+              dateSafety?.seasonal
+                ? "ring-slate-200"
+                : GRADE_STYLE[safety.grade].ring
+            }`}
           >
-            <GallerySection
-              contentId={contentId}
-              title={place.title}
-              envType={place.envType}
-              imageUrl={place.imageUrl}
-              ratio="half"
-            />
-          </Suspense>
+            {dateSafety?.seasonal ? (
+              /* 계절 모드: 개별 날짜 예보가 없어 단일 점수를 단정하지 않고 범위로 안내 */
+              <>
+                <p className="text-xs font-medium text-slate-500">
+                  {rangeSafety
+                    ? `기간 중 가장 주의가 필요한 날(${formatKoreanDate(dateSafety.dateISO)}) 기준 — `
+                    : `${formatKoreanDate(dateSafety.dateISO)} 방문 — `}
+                  {dateSafety.seasonal.month}월 · 30년 기후 기준
+                </p>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-400">통상일</p>
+                    <SafetyScoreBadge
+                      score={dateSafety.seasonal.typical.score}
+                      grade={dateSafety.seasonal.typical.grade}
+                    />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-400">궂은날</p>
+                    <SafetyScoreBadge
+                      score={dateSafety.seasonal.bad.score}
+                      grade={dateSafety.seasonal.bad.grade}
+                    />
+                  </div>
+                </div>
+                {/* "30년 기후"는 첫 줄에 이미 있으므로 여기선 범위의 의미만 설명한다 */}
+                <p className="mt-2 text-xs leading-relaxed text-slate-400">
+                  먼 날짜는 날씨를 예보할 수 없어, 평범한 날과 궂은 날(상위 10%)의
+                  점수 범위로 안내해요.
+                </p>
+              </>
+            ) : (
+              <div className="flex items-center gap-3.5">
+                <p className="flex shrink-0 items-baseline gap-0.5">
+                  <span
+                    className={`text-4xl font-extrabold tabular-nums ${GRADE_STYLE[safety.grade].text}`}
+                  >
+                    {safety.score}
+                  </span>
+                  <span className="text-xs font-medium text-slate-400">/ 100</span>
+                </p>
+                <div className="min-w-0">
+                  <p
+                    className={`flex items-center gap-1.5 font-bold ${GRADE_STYLE[safety.grade].text}`}
+                  >
+                    <span
+                      className={`h-2.5 w-2.5 shrink-0 rounded-full ${GRADE_STYLE[safety.grade].dot}`}
+                    />
+                    {GRADE_LABEL[safety.grade]}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {dateSafety
+                      ? rangeSafety
+                        ? `기간 중 가장 주의가 필요한 날(${formatKoreanDate(dateSafety.dateISO)}) 예보 기준`
+                        : `${formatKoreanDate(dateSafety.dateISO)} 예보 기준`
+                      : "오늘의 안전 점수"}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* 감점 내역은 아래 "왜 이 점수인가요?"가 전부 펼친다 —
+                여기 한 줄 요약을 두면 총점(100 − 총감점)을 같은 말로 두 번 쓰게 된다 */}
+            {dateSafety?.mode === "forecast" && (
+              <p className="mt-1.5 text-xs text-slate-400">
+                기상은 {dateSafety.dayOffset}일 후 예보, 미세먼지·산불위험은 현재값
+                기준입니다.
+              </p>
+            )}
+            {/* 기간 일자별 점수 — 셀 클릭 시 그날 단일 날짜로 드릴다운 */}
+            {rangeSafety && (
+              <div className="mt-3">
+                <RangeDayStrip
+                  range={rangeSafety}
+                  basePath={`/places/${place.contentId}`}
+                  extraParams={{ profile: profileParam(profile) }}
+                />
+              </div>
+            )}
+
+            {/* 동행 조건 — 점수를 바꾸는 입력이므로 점수와 같은 카드에 둔다 */}
+            <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 border-t border-slate-100 pt-3">
+              <span className="text-xs font-semibold text-slate-500">
+                동행에 따라 달라져요 —{" "}
+                <strong className="text-teal-700">
+                  {PROFILE_LABEL[profile]} 기준
+                </strong>
+              </span>
+              <ProfileChips
+                basePath={`/places/${place.contentId}`}
+                current={profile}
+                extraParams={{ date: activeDate, end: activeEnd }}
+              />
+            </div>
+          </div>
+
+          {/* 요인별 상세 — 계절 모드는 궂은날 시나리오 기준 (무엇을 주의할지) */}
+          <section>
+            <h2 className="text-lg font-bold text-slate-900">
+              {dateSafety?.seasonal
+                ? "궂은날엔 이런 점을 주의하세요"
+                : "왜 이 점수인가요?"}
+            </h2>
+            <div className="mt-3">
+              <RiskBreakdownBar factors={analysisSafety.factors} />
+            </div>
+          </section>
         </div>
 
         <div className="min-w-0 space-y-6">
@@ -318,114 +452,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
               />
             </div>
           </section>
-        </div>
-      </div>
 
-      {/*
-        하단 — 좌: 점수와 그 근거 / 우: 남들의 경험(후기)과 동행 조건(반려동물·아이).
-        상단과 한 그리드로 묶지 않는 이유: 근거 카드는 요인 수(5~10개)에 따라 높이가
-        배로 달라져, 행이 정렬되면 상단 오른쪽에 200px 넘는 빈칸이 생긴다.
-      */}
-      <div className="mt-8 grid gap-8 lg:grid-cols-2 lg:items-start">
-        <div className="min-w-0 space-y-6">
-          <div>
-            <p className="mb-2 text-sm font-semibold text-slate-600">
-              동행에 따라 점수가 달라져요 —{" "}
-              <strong className="text-teal-700">
-                {PROFILE_LABEL[profile]} 기준
-              </strong>
-            </p>
-            <ProfileChips
-              basePath={`/places/${place.contentId}`}
-              current={profile}
-              extraParams={{ date: activeDate, end: activeEnd }}
-            />
-          </div>
-
-          <div>
-            {dateSafety?.seasonal ? (
-              /* 계절 모드: 개별 날짜 예보가 없어 단일 점수를 단정하지 않고 범위로 안내 */
-              <div className="rounded-2xl bg-white p-5 ring-1 ring-slate-200">
-                <p className="text-xs font-medium text-slate-500">
-                  {rangeSafety
-                    ? `기간 중 가장 주의가 필요한 날(${formatKoreanDate(dateSafety.dateISO)}) 기준 — `
-                    : `${formatKoreanDate(dateSafety.dateISO)} 방문 — `}
-                  {dateSafety.seasonal.month}월 · 30년 기후 기준
-                </p>
-                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <div>
-                    <p className="text-xs font-semibold text-slate-400">통상일</p>
-                    <SafetyScoreBadge
-                      score={dateSafety.seasonal.typical.score}
-                      grade={dateSafety.seasonal.typical.grade}
-                    />
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-slate-400">궂은날</p>
-                    <SafetyScoreBadge
-                      score={dateSafety.seasonal.bad.score}
-                      grade={dateSafety.seasonal.bad.grade}
-                    />
-                  </div>
-                </div>
-                {/* "30년 기후"는 첫 줄에 이미 있으므로 여기선 범위의 의미만 설명한다 */}
-                <p className="mt-2 text-xs leading-relaxed text-slate-400">
-                  먼 날짜는 날씨를 예보할 수 없어, 평범한 날과 궂은 날(상위
-                  10%)의 점수 범위로 안내해요.
-                </p>
-              </div>
-            ) : (
-              <SafetyScoreBadge
-                score={safety.score}
-                grade={safety.grade}
-                size="lg"
-                label={
-                  dateSafety
-                    ? rangeSafety
-                      ? `기간 중 가장 주의가 필요한 날(${formatKoreanDate(dateSafety.dateISO)}) 예보 기준 안전 점수`
-                      : `${formatKoreanDate(dateSafety.dateISO)} 예보 기준 안전 점수`
-                    : "오늘의 안전 점수"
-                }
-              />
-            )}
-            {/* 쾌적/안전 층 소계 — 리포트 화면과 같은 표현 */}
-            <RiskLayerSummary
-              factors={analysisSafety.factors}
-              note={dateSafety?.seasonal ? "궂은날 기준" : undefined}
-            />
-            {dateSafety?.mode === "forecast" && (
-              <p className="mt-2 text-xs text-slate-400">
-                기상은 {dateSafety.dayOffset}일 후 예보, 미세먼지·산불위험은
-                현재값 기준입니다.
-              </p>
-            )}
-            {/* 어느 날짜 기준인지는 위 배지 라벨(또는 계절 카드 첫 줄)이 이미 말한다 */}
-            {/* 기간 일자별 점수 — 셀 클릭 시 그날 단일 날짜로 드릴다운 */}
-            {rangeSafety && (
-              <div className="mt-3">
-                <RangeDayStrip
-                  range={rangeSafety}
-                  basePath={`/places/${place.contentId}`}
-                  extraParams={{ profile: profileParam(profile) }}
-                />
-              </div>
-            )}
-          </div>
-
-          {/* 요인별 상세 — 계절 모드는 궂은날 시나리오 기준 (무엇을 주의할지) */}
-          <section>
-            <h2 className="text-lg font-bold text-slate-900">
-              {dateSafety?.seasonal
-                ? "궂은날엔 이런 점을 주의하세요"
-                : "왜 이 점수인가요?"}
-            </h2>
-            <div className="mt-3">
-              <RiskBreakdownBar factors={analysisSafety.factors} />
-            </div>
-          </section>
-        </div>
-
-        <div className="min-w-0 space-y-8">
           {/* 방문 후기 (스트리밍, 후기 없으면 섹션 숨김) */}
           <Suspense fallback={null}>
             <ReviewsSection title={place.title} />
@@ -493,7 +520,9 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
         <section className="min-w-0">
           <h2 className="text-lg font-bold text-slate-900">안전한 대체지 추천</h2>
           <p className="mt-1 text-sm text-slate-500">
-            같은 유형의 더 안전한 주변 관광지예요 — {transport === "car" ? `자차 기준 ${CAR_DISTANCE_KM}km` : "대중교통 기준 30km"} 이내 (직선거리)
+            같은 유형의 더 안전한 주변 관광지예요 —{" "}
+            {transport === "car" ? "자차" : "대중교통"} 기준 {altRangeKm}km 이내
+            (직선거리)
           </p>
           {alternatives.length === 0 ? (
             <div className="mt-3 rounded-2xl bg-teal-50/50 px-6 py-10 text-center ring-1 ring-teal-100">
@@ -504,8 +533,8 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
                 이 관광지는 주변 대비 이미 주의 요인이 낮은 편이에요
               </p>
               <p className="mt-1 text-sm text-slate-500">
-                30km 이내에서 안전 점수가 의미 있게 더 높은 관광지를 찾지
-                못했어요.
+                {altRangeKm}km 이내에서 안전 점수가 의미 있게 더 높은 관광지를
+                찾지 못했어요.
               </p>
               <Link
                 href={`/places${buildQuery({ profile: profileParam(profile) })}`}

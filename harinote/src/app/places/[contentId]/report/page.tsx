@@ -8,7 +8,6 @@ import { notFound } from "next/navigation";
 import { getPlace, getPlacesWithSafety, getRiskInput } from "@/lib/datasource";
 import { computeSafetyScore } from "@/lib/safety/score";
 import { PROFILE_LABEL } from "@/lib/safety/types";
-import RiskLayerSummary from "@/components/RiskLayerSummary";
 import { medicalDataSource, nearestHospital } from "@/lib/risk/medical";
 import { shelterDataSource } from "@/lib/risk/shelter";
 import { hasLiveRiskKeys } from "@/lib/risk/live";
@@ -126,7 +125,6 @@ export default async function ReportPage({ params, searchParams }: Props) {
         {/* ② 점수 요약 */}
         <section className="mt-5 print:mt-4">
           <SafetyScoreBadge score={safety.score} grade={safety.grade} size="lg" />
-          <RiskLayerSummary factors={safety.factors} />
         </section>
 
         {/* ③ 오늘의 주의 요인 */}

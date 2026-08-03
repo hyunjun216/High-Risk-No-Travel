@@ -9,9 +9,12 @@ export default function PlaceDetailLoading() {
       <div className="mt-3 h-5 w-52 rounded-full bg-slate-100" />
       {/* 전폭 액션 버튼 */}
       <div className="mt-4 h-8 w-64 rounded-full bg-slate-100" />
-      {/* 상단 — 좌 사진(3:2) · 우 요약·소개·지도 (실제 페이지와 같은 트랙) */}
+      {/* 상단 — 좌 사진(3:2)+점수 요약 · 우 요약·소개·지도 (실제 페이지와 같은 트랙) */}
       <div className="mt-6 grid gap-8 lg:grid-cols-2 lg:items-start">
-        <div className="aspect-[3/2] rounded-2xl bg-white ring-1 ring-slate-100" />
+        <div>
+          <div className="aspect-[3/2] rounded-2xl bg-white ring-1 ring-slate-100" />
+          <div className="mt-6 h-36 rounded-2xl bg-white ring-1 ring-slate-100" />
+        </div>
         <div className="h-[34rem] rounded-2xl bg-white ring-1 ring-slate-100" />
       </div>
     </div>

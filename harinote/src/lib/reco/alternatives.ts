@@ -21,7 +21,7 @@ export interface Alternative extends PlaceWithSafety {
 }
 
 /** 대중교통 기준 후보 반경. 자차는 호출부에서 CAR_DISTANCE_KM 사용 */
-const MAX_DISTANCE_KM = 30;
+export const MAX_DISTANCE_KM = 30;
 /** 자차 이동 시 후보 반경 — 더 먼 대체지도 현실적 선택지 */
 export const CAR_DISTANCE_KM = 50;
 const INDOOR_BONUS = 2;

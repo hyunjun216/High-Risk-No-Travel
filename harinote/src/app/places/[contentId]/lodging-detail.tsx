@@ -22,7 +22,6 @@ import {
 import { formatKoreanDate } from "@/lib/date";
 import type { Profile } from "@/lib/safety/types";
 import { PROFILE_LABEL } from "@/lib/safety/types";
-import RiskLayerSummary from "@/components/RiskLayerSummary";
 import { CONTENT_TYPE_LABEL, ENV_TYPE_LABEL } from "@/lib/tour/types";
 import {
   fetchLodgingIntro,
@@ -164,11 +163,7 @@ export default async function LodgingDetail({
                 }
               />
             )}
-            {/* 쾌적/안전 층 소계 — 리포트 화면과 같은 표현 */}
-            <RiskLayerSummary
-              factors={analysisSafety.factors}
-              note={dateSafety?.seasonal ? "궂은날 기준" : undefined}
-            />
+            {/* 감점 내역은 아래 요인별 막대가 전부 펼친다 (관광지 상세와 같은 원칙) */}
             {dateSafety?.mode === "forecast" && (
               <p className="mt-2 text-xs text-slate-400">
                 기상은 {dateSafety.dayOffset}일 후 예보, 미세먼지·산불위험은
