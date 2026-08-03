@@ -279,6 +279,8 @@ export default function TravelPlannerPanel({
   // 시간 슬롯 순 체인 — 번호·스톱 간 거리·지도·총거리 공용
   const orderedDayItems = slotOrderedItems(dayItems);
   const isLastDay = activeDay === days;
+  // 풀코스 추천은 채울 여지가 있을 때만 — 당일치기 빈 계획엔 "빈 시간만 채우기"가 성립하지 않는다
+  const showFullCourse = hydrated && (days > 1 || count > 0);
 
   return (
     <aside
@@ -373,22 +375,25 @@ export default function TravelPlannerPanel({
         </form>
       )}
 
-      {/* 하루 코스 추천 — 팝업에서 테마·지역 선택 후 활성 일차에 담기 (동행·이동수단은 검색 필터 상속) */}
+      {/* 코스 추천 두 갈래 — 여행 길이 축(전체 vs 하루). 이 화면의 목표가 "여행 만들기"라
+          풀코스가 주 행동(색)이고 위에 선다. 다만 풀코스는 당일치기 + 빈 계획일 땐 뜨지
+          않으므로, 그때는 하루 코스가 유일한 주 행동이 되도록 색을 넘겨받는다 */}
       <div className="space-y-2 border-b border-slate-100 px-4 py-2.5">
-        <CourseRecommendModal
-          date={courseDate}
-          profile={profile}
-          transport={transport}
-          sigunguCodes={sigunguCodes}
-        />
         {/* 담긴 곳이 있으면 빈 시간대만, 비어 있는 N박이면 전체 일정 (이름은 고정) */}
-        {hydrated && (days > 1 || count > 0) && (
+        {showFullCourse && (
           <MultiDayCourseModal
             profile={profile}
             transport={transport}
             sigunguCodes={sigunguCodes}
           />
         )}
+        <CourseRecommendModal
+          date={courseDate}
+          profile={profile}
+          transport={transport}
+          sigunguCodes={sigunguCodes}
+          variant={showFullCourse ? "secondary" : "primary"}
+        />
       </div>
 
       {/* 여행 일수·출발일 설정 — localStorage 계획에만 반영 (일차 탭·날짜 라벨) */}

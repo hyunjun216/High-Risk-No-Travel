@@ -164,7 +164,7 @@ export default function MultiDayCourseModal({
       <button
         type="button"
         onClick={openModal}
-        className="w-full rounded-xl bg-white px-3 py-2 text-sm font-bold text-teal-700 ring-1 ring-teal-600/40 transition-colors hover:bg-teal-50"
+        className="w-full rounded-xl bg-teal-600 px-3 py-2 text-sm font-bold text-white shadow-sm transition-colors hover:bg-teal-700"
       >
         {title}
       </button>

@@ -37,6 +37,11 @@ interface Props {
   transport: Transport;
   /** 검색 필터의 시군 복수선택 — 1곳이면 자동 선택, 2곳 이상이면 그룹 우선 표시 */
   sigunguCodes: number[];
+  /**
+   * 여는 버튼의 무게. 위에 풀코스 추천이 서 있으면 이쪽은 보조로 물러난다.
+   * 풀코스가 안 뜨는 조건(당일치기 + 빈 계획)에서는 이 화면의 유일한 주 행동이므로 색을 갖는다.
+   */
+  variant?: "primary" | "secondary";
 }
 
 export default function CourseRecommendModal({
@@ -44,6 +49,7 @@ export default function CourseRecommendModal({
   profile,
   transport,
   sigunguCodes,
+  variant = "primary",
 }: Props) {
   const [open, setOpen] = useState(false);
   const [sigungu, setSigungu] = useState<number | undefined>(undefined);
@@ -130,7 +136,11 @@ export default function CourseRecommendModal({
       <button
         type="button"
         onClick={openModal}
-        className="w-full rounded-xl bg-teal-600 px-3 py-2 text-sm font-bold text-white shadow-sm transition-colors hover:bg-teal-700"
+        className={`w-full rounded-xl px-3 py-2 text-sm font-bold transition-colors ${
+          variant === "primary"
+            ? "bg-teal-600 text-white shadow-sm hover:bg-teal-700"
+            : "bg-white text-teal-700 ring-1 ring-teal-600/40 hover:bg-teal-50"
+        }`}
       >
         🗓 하루 코스 추천
       </button>
