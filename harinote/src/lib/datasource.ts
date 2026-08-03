@@ -12,7 +12,8 @@ import { cache } from "react";
 import type { Place } from "@/lib/tour/types";
 import type { Profile, RiskBreakdown, RiskInput } from "@/lib/safety/types";
 import { computeSafetyScore } from "@/lib/safety/score";
-import { getForecastRiskInput, getLiveRiskInput } from "@/lib/risk/live";
+import { getForecastRiskInput, getLiveRiskInput, getMidRiskInput } from "@/lib/risk/live";
+import { MID_MAX_OFFSET, MID_MIN_OFFSET } from "@/lib/risk/kma-mid";
 import { seasonalRange, type SeasonalRange } from "@/lib/risk/seasonal";
 import {
   dayOffsetSeoul,
@@ -282,6 +283,19 @@ export async function getDateSafety(
       };
     }
   }
+  // D+4~10은 중기예보 — 실패하면 아래 계절 모드로 폴백한다.
+  // 중기예보는 풍속·강수량을 주지 않아 TCI가 축을 제외하고 재정규화한다(kma-mid.ts).
+  if (dayOffset >= MID_MIN_OFFSET && dayOffset <= MID_MAX_OFFSET) {
+    const input = await getMidRiskInput(place, dateISO);
+    if (input) {
+      return {
+        mode: "forecast",
+        dateISO,
+        dayOffset,
+        breakdown: computeSafetyScore(input, place, profile),
+      };
+    }
+  }
   const r = seasonalRange(place, monthOfISO(dateISO), profile);
   if (!r) return null;
   return { mode: "seasonal", dateISO, dayOffset, breakdown: r.typical, seasonal: r };
@@ -347,8 +361,9 @@ export async function getRangeSafety(
 
   for (const dateISO of eachDayISO(startISO, endISO)) {
     const dayOffset = dayOffsetSeoul(dateISO);
-    if (dayOffset >= 1 && dayOffset <= 3) {
-      // 단기예보 구간 — 예보가 없으면 getDateSafety가 계절 모드로 폴백
+    // 예보 구간(단기 D+1~3 · 중기 D+4~10) — 예보가 없으면 getDateSafety가 계절 모드로 폴백.
+    // 월 단위 캐시를 타지 않고 getDateSafety에 맡기는 이유는 날짜마다 예보가 다르기 때문이다.
+    if (dayOffset >= 1 && dayOffset <= MID_MAX_OFFSET) {
       const ds = await getDateSafety(place, profile, dateISO);
       if (ds) days.push(ds);
       continue;

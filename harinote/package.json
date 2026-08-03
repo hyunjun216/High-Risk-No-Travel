@@ -14,6 +14,7 @@
     "check:risk": "tsx scripts/check-risk-apis.ts",
     "check:forest": "tsx scripts/check-forest-api.ts",
     "check:map": "tsx scripts/check-map-spread.ts",
+    "check:mid": "tsx scripts/check-mid-forecast.ts",
     "check:sensitivity": "tsx scripts/safety-sensitivity.report.ts",
     "build:hospitals": "tsx scripts/build-hospitals.ts",
     "build:shelters": "tsx scripts/build-shelters.ts",

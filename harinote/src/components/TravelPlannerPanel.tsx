@@ -36,6 +36,9 @@ import {
 import type { Profile } from "@/lib/safety/types";
 import type { Transport } from "@/lib/prefs";
 
+/** 자동 재진단 디바운스 — 드래그로 스톱을 연달아 옮기는 동안의 중간 상태를 건너뛴다 */
+const DIAGNOSE_DEBOUNCE_MS = 800;
+
 const NIGHTS_OPTIONS = [
   { nights: 0, label: "당일치기" },
   { nights: 1, label: "1박 2일" },
@@ -137,20 +140,30 @@ export default function TravelPlannerPanel({
     flashTimer.current = setTimeout(() => setSavedFlash(null), 2000);
   };
 
-  // 계획 안전 진단 — 스톱별 일차 날짜 재채점 + 주의 스톱 교체 후보
+  // 계획 안전 진단 — 스톱별 일차 날짜 재채점 + 주의 스톱 교체 후보.
+  // 사용자가 눌러야 도는 구조였는데, 그러면 안 누른 사람에겐 "담을 당시 점수"(다른
+  // 날짜 기준)가 남아 틀린 숫자가 기본값이 된다. 리포트 화면은 이미 진입 즉시 같은
+  // 계산을 돌린다 — 두 화면이 같은 값을 보이도록 여기서도 자동으로 돈다.
   const [diag, setDiag] = useState<PlanDiagnosisDto | null>(null);
   const [diagSig, setDiagSig] = useState("");
   const [diagLoading, setDiagLoading] = useState(false);
-  const [diagError, setDiagError] = useState(false);
+  // 실패한 계획 서명 — 자동 재시도가 같은 실패를 무한 반복하지 않게 기억한다
+  const [failedSig, setFailedSig] = useState<string | null>(null);
   // 서버가 거절하는 크기는 미리 안다 — "잠시 후 다시 시도"는 절대 성공하지 않는 안내가 된다
   const tooManyStops = count > MAX_STOPS;
+  // 스톱 구성·출발일·조건이 바뀌면 기존 진단은 낡은 것 (순서 변경은 무관)
+  const currentSig =
+    hydrated && count > 0 ? planSignature(plan, profile, transport) : "";
+  const diagStale = diag !== null && currentSig !== diagSig;
+  const diagError = failedSig !== null && failedSig === currentSig;
 
   async function runDiagnosis(target?: TravelPlan) {
     const p = target ?? plan;
     if (p.items.length === 0 || diagLoading) return;
-    if (p.items.length > MAX_STOPS) return; // 버튼이 비활성이지만 코스 담기 경로도 막는다
+    if (p.items.length > MAX_STOPS) return; // 안내는 따로 띄우고, 코스 담기 경로도 막는다
+    const sig = planSignature(p, profile, transport);
     setDiagLoading(true);
-    setDiagError(false);
+    setFailedSig(null);
     try {
       const result = await diagnosePlan({
         items: p.items.map((it) => ({ contentId: it.contentId, day: it.day ?? 1 })),
@@ -159,17 +172,30 @@ export default function TravelPlannerPanel({
         transport,
       });
       setDiag(result);
-      setDiagSig(planSignature(p, profile, transport));
+      setDiagSig(sig);
     } catch {
-      setDiagError(true);
+      setFailedSig(sig);
     } finally {
       setDiagLoading(false);
     }
   }
 
-  // 스톱 구성·출발일·조건이 바뀌면 기존 진단은 낡은 것 (순서 변경은 무관)
-  const diagStale =
-    diag !== null && planSignature(plan, profile, transport) !== diagSig;
+  // 최신 계획을 담은 진단 함수 — 아래 자동 실행 이펙트가 매 렌더 재구독하지 않게 ref로 넘긴다
+  const runRef = useRef(runDiagnosis);
+  useEffect(() => {
+    runRef.current = runDiagnosis;
+  });
+
+  // 계획·조건이 바뀌면 자동 재진단. 드래그로 스톱을 옮기는 중간 상태마다 서버를
+  // 때리지 않도록 디바운스하고, 이미 실패한 서명은 사용자가 "다시 시도"를 누를 때만.
+  useEffect(() => {
+    if (!hydrated || currentSig === "" || tooManyStops) return;
+    if (currentSig === diagSig) return; // 이미 최신
+    if (currentSig === failedSig) return; // 실패 직후 — 자동 반복 금지
+    if (diagLoading) return; // 진행 중인 요청이 끝나면 이 이펙트가 다시 판단한다
+    const t = setTimeout(() => void runRef.current(), DIAGNOSE_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [hydrated, currentSig, diagSig, failedSig, diagLoading, tooManyStops]);
   const diagByStop = new Map(
     !diagStale && diag ? diag.stops.map((s) => [s.contentId, s]) : [],
   );
@@ -388,37 +414,32 @@ export default function TravelPlannerPanel({
         />
       </div>
 
-      {/* 계획 안전 진단 — 각 스톱을 해당 일차 날짜 기준으로 재채점 */}
+      {/* 계획 안전 진단 — 각 스톱을 해당 일차 날짜 기준으로 자동 재채점 (버튼 없음) */}
       {hydrated && count > 0 && (
         <div className="border-b border-slate-100 px-4 py-2.5">
-          <button
-            type="button"
-            onClick={() => void runDiagnosis()}
-            disabled={diagLoading || tooManyStops}
-            className="w-full rounded-xl bg-white px-3 py-2 text-sm font-bold text-teal-700 ring-1 ring-teal-600/40 transition-colors hover:bg-teal-50 disabled:opacity-60"
-          >
-            {diagLoading ? "진단 중…" : "🩺 계획 안전 진단"}
-          </button>
           {tooManyStops ? (
-            <p className="mt-1.5 text-xs font-semibold text-amber-600">
+            <p className="text-xs font-semibold text-amber-600">
               스톱이 {MAX_STOPS}곳을 넘어 진단할 수 없어요 (현재 {count}곳). 리포트도 앞{" "}
               {MAX_STOPS}곳만 나옵니다 — 일부를 빼주세요
             </p>
-          ) : (
-            diagError && (
-              <p className="mt-1.5 text-xs font-semibold text-red-500">
-                진단에 실패했어요. 잠시 후 다시 시도해 주세요.
-              </p>
-            )
-          )}
-          {diag && diagStale && !diagLoading && (
-            <p className="mt-1.5 text-xs font-semibold text-amber-600">
-              계획이 바뀌었어요 — 다시 진단해 보세요
+          ) : diagError ? (
+            <p className="flex items-center gap-2 text-xs font-semibold text-red-500">
+              안전 진단에 실패했어요
+              <button
+                type="button"
+                onClick={() => void runDiagnosis()}
+                className="rounded-lg px-2 py-0.5 font-bold text-teal-700 ring-1 ring-teal-600/40 transition-colors hover:bg-teal-50"
+              >
+                다시 시도
+              </button>
             </p>
-          )}
-          {diag && !diagStale && !diagError && (
+          ) : diagLoading || diagStale || !diag ? (
+            <p className="text-xs font-semibold text-slate-400">
+              🩺 계획 안전 진단 중…
+            </p>
+          ) : (
             <p
-              className={`mt-1.5 text-xs font-semibold ${
+              className={`text-xs font-semibold ${
                 diag.riskyCount > 0 ? "text-amber-700" : "text-teal-700"
               }`}
             >

@@ -16,6 +16,7 @@ import type { RiskInput } from "@/lib/safety/types";
 import { mockRiskInputFor } from "@/fixtures/safety/risk-inputs";
 import { latLngToGrid } from "./kma-grid";
 import { fetchKmaDailyWeather } from "./kma";
+import { fetchMidDailyWeather } from "./kma-mid";
 import { getGangwonPm25 } from "./airkorea";
 import { fetchForestFireLevel } from "./forest";
 import { nearestHospitalKm } from "./medical";
@@ -148,6 +149,36 @@ export async function getLiveRiskInput(
     }
   }
 
+  return input;
+}
+
+/**
+ * 중기예보(D+4~10) 기반 입력 조립.
+ *
+ * 기상만 중기예보로 교체하고 미세먼지·산불·응급의료·대피소는 오늘 기준을 유지한다
+ * (단기 경로와 같은 원칙 — 미래 예보가 없는 소스는 현재값 각주로 안내).
+ * 중기예보는 풍속·강수량·습도를 주지 않으므로 해당 필드를 지운다 —
+ * TCI가 없는 축을 제외하고 재정규화하므로 정보 없는 축이 불이익을 주지 않는다.
+ * 범위 밖이거나 조회 실패면 null → 호출부는 계절 모드로 폴백한다.
+ */
+export async function getMidRiskInput(
+  place: Pick<Place, "contentId" | "envType" | "sigunguCode" | "lat" | "lng">,
+  targetISO: string,
+): Promise<RiskInput | null> {
+  if (place.sigunguCode === undefined) return null;
+  const w = await fetchMidDailyWeather(place.sigunguCode, targetISO).catch(() => null);
+  if (!w) return null;
+
+  const input = await getLiveRiskInput(place);
+  input.tempC = w.tempC;
+  input.tminC = w.tminC;
+  if (w.rainProbPct !== undefined) input.rainProbPct = w.rainProbPct;
+  if (w.sunHours !== undefined) input.sunHours = w.sunHours;
+  else delete input.sunHours;
+  // 중기예보 미제공 — 축을 비활성으로 두어 TCI가 재정규화하게 한다
+  delete input.windMs;
+  delete input.rainMm;
+  delete input.apparentTempC;
   return input;
 }
 

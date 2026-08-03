@@ -102,7 +102,7 @@ export default function SavedPlansList() {
                   onClick={() => loadPlan(saved)}
                   className="rounded-full bg-teal-600 px-4 py-1.5 text-xs font-bold text-white transition-colors hover:bg-teal-700"
                 >
-                  불러와서 수정
+                  수정
                 </button>
                 <button
                   type="button"
