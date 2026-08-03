@@ -7,6 +7,7 @@ import CourseRecommendModal from "@/components/CourseRecommendModal";
 import MultiDayCourseModal from "@/components/MultiDayCourseModal";
 import { useTravelPlan } from "@/hooks/useTravelPlan";
 import { useSavedPlans } from "@/hooks/useSavedPlans";
+import { evictedBySaving, MAX_SAVED_PLANS } from "@/lib/saved-plans";
 import {
   dateOfDay,
   defaultSlotFor,
@@ -128,6 +129,8 @@ export default function TravelPlannerPanel({
   const defaultName =
     origin?.name ??
     (plan.from ? `${formatKoreanDate(plan.from)} 여행` : "내 여행 계획");
+  // 지금 저장하면 밀려날 계획 (보관함이 가득 찬 새 계획일 때만)
+  const evicted = evictedBySaving(savedList, plan);
   const confirmSave = () => {
     if (plan.items.length === 0) return; // 비운 직후 잔류 폼에서 빈 계획 저장 방지
     // 저장 실패(쿼터·차단)를 성공으로 표시하지 않는다 — 무통보 데이터 손실 방지
@@ -351,7 +354,7 @@ export default function TravelPlannerPanel({
       {/* 저장 이름 입력 (저장 버튼 토글) — 계획이 비면 함께 사라진다 */}
       {saving && hydrated && count > 0 && (
         <form
-          className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5"
+          className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-2.5"
           onSubmit={(e) => {
             e.preventDefault();
             confirmSave();
@@ -372,6 +375,15 @@ export default function TravelPlannerPanel({
           >
             저장
           </button>
+          {/* 보관함이 가득 찼을 때 무엇이 사라지는지 저장 "전에" 알린다 —
+              사용자 데이터가 조용히 없어지지 않게 하는 것이 상한값보다 중요하다 */}
+          {evicted && (
+            <p className="w-full text-xs font-semibold text-amber-600">
+              보관함이 {MAX_SAVED_PLANS}개로 가득 찼어요 — 저장하면 가장 오래된
+              &ldquo;{evicted.name}&rdquo;이(가) 밀려납니다. 남기려면 저장한 계획
+              탭에서 하나를 먼저 지워주세요
+            </p>
+          )}
         </form>
       )}
 

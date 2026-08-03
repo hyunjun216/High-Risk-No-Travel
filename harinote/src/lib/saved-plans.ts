@@ -41,6 +41,21 @@ export function savedEntryFor(
   return { id: plan.savedId ?? newId(), name, savedAt, plan };
 }
 
+/**
+ * 이 계획을 저장하면 밀려날 계획 — 없으면 null.
+ *
+ * 상한에 닿았을 때 오래된 계획이 아무 안내 없이 사라지던 것을 UI가 미리 알리기 위한
+ * 값이다. 기존 계획 갱신(savedId가 보관함에 있음)은 자리를 새로 쓰지 않으므로 제외.
+ */
+export function evictedBySaving(
+  list: SavedPlan[],
+  plan: TravelPlan,
+): SavedPlan | null {
+  if (list.length < MAX_SAVED_PLANS) return null;
+  if (plan.savedId && list.some((p) => p.id === plan.savedId)) return null;
+  return list[list.length - 1] ?? null;
+}
+
 export function removeSavedPlan(list: SavedPlan[], id: string): SavedPlan[] {
   return list.filter((p) => p.id !== id);
 }

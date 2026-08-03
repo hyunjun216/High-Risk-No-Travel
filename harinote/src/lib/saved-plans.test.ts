@@ -3,6 +3,7 @@ import {
   isValidSavedPlanList,
   MAX_SAVED_PLANS,
   removeSavedPlan,
+  evictedBySaving,
   savedEntryFor,
   upsertSavedPlan,
   type SavedPlan,
@@ -115,5 +116,32 @@ describe("savedEntryFor — 편집한 계획은 갱신, 새 계획만 추가", (
     expect(list).toHaveLength(MAX_SAVED_PLANS);
     // 상한 끝에 있던 계획이 살아있어야 한다 (조용한 FIFO 삭제 방지)
     expect(list.some((p) => p.id === `p${MAX_SAVED_PLANS - 1}`)).toBe(true);
+  });
+});
+
+describe("evictedBySaving", () => {
+  const full: SavedPlan[] = Array.from({ length: MAX_SAVED_PLANS }, (_, i) =>
+    entry(`p${i}`, `계획 ${i}`),
+  );
+  const BASE: TravelPlan = {
+    items: [{ contentId: 1, title: "A", lat: 37.75, lng: 128.87 }],
+  };
+
+  it("여유가 있으면 밀려나는 계획이 없다", () => {
+    expect(evictedBySaving(full.slice(0, MAX_SAVED_PLANS - 1), BASE)).toBeNull();
+  });
+
+  it("가득 찬 상태에서 새 계획을 저장하면 가장 오래된 것이 밀려난다", () => {
+    expect(evictedBySaving(full, BASE)?.id).toBe(`p${MAX_SAVED_PLANS - 1}`);
+  });
+
+  it("가득 차도 기존 계획 갱신이면 아무도 밀려나지 않는다", () => {
+    expect(evictedBySaving(full, { ...BASE, savedId: "p3" })).toBeNull();
+  });
+
+  it("savedId가 보관함에 없으면(삭제된 계획) 새 계획으로 본다", () => {
+    expect(evictedBySaving(full, { ...BASE, savedId: "없는id" })?.id).toBe(
+      `p${MAX_SAVED_PLANS - 1}`,
+    );
   });
 });
