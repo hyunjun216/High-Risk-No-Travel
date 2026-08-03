@@ -25,7 +25,12 @@ import {
   totalDistanceKm,
   type PlanSlot,
 } from "@/lib/travel-plan";
-import { addDaysISO, formatKoreanDate, todayISOSeoul } from "@/lib/date";
+import {
+  addDaysISO,
+  dayOffsetSeoul,
+  formatKoreanDate,
+  todayISOSeoul,
+} from "@/lib/date";
 import { parseProfile, type SearchParamValue } from "@/components/search-params";
 import CourseRouteMap from "@/components/CourseRouteMap";
 import ReportActions from "@/components/ReportActions";
@@ -79,6 +84,9 @@ export default async function PlanReportPage({ searchParams }: Props) {
     }
   });
   if (rows.length === 0) notFound();
+  // 데이터에 없는 contentId는 위에서 조용히 빠진다 — 몇 곳이 사라졌는지 밝히지 않으면
+  // 받은 사람은 이 리포트를 계획 전부로 읽는다 (상한 초과 안내와 같은 이유)
+  const droppedCount = q.stops.length - rows.length;
 
   const days = Math.max(...rows.map((r) => r.stop.day));
   // 일차 안에서는 시간 슬롯 순으로 (레거시 URL의 슬롯 없는 스톱은 원래 순서 유지)
@@ -113,8 +121,25 @@ export default async function PlanReportPage({ searchParams }: Props) {
     profile,
   );
 
+  // 올해가 아니면 연도를 붙인다 — 리포트는 URL로 오래 돌아다니는데, "1월 1일"만
+  // 적어 두면 지난 계획인지 내년 계획인지 받은 사람이 알 방법이 없다
+  const today = todayISOSeoul();
+  const dateText = (dateISO: string) =>
+    dateISO.slice(0, 4) === today.slice(0, 4)
+      ? formatKoreanDate(dateISO)
+      : `${dateISO.slice(0, 4)}년 ${formatKoreanDate(dateISO)}`;
+
   const dayLabel = (day: number) =>
-    q.from ? `${day}일차 · ${formatKoreanDate(addDaysISO(q.from, day - 1))}` : `${day}일차`;
+    q.from ? `${day}일차 · ${dateText(addDaysISO(q.from, day - 1))}` : `${day}일차`;
+
+  // diagnosePlan은 "지난 날짜"와 "1년 넘게 남은 날짜"를 똑같이 오늘 출발로 되돌린다.
+  // 한 문구로 뭉뚱그리면 내년 여행 계획에 "출발일이 지났다"는 거짓말이 나간다
+  const staleFrom =
+    diagnosis.assumedToday && q.from
+      ? dayOffsetSeoul(q.from) < 0
+        ? ("past" as const)
+        : ("far" as const)
+      : null;
 
   // 실연동 키가 없으면 기상·미세먼지·산불위험은 시범값이다 — 쓰지도 않은 기관을
   // 출처로 적으면 종이만 받아 본 사람에게는 확인할 방법이 없는 거짓말이 된다
@@ -137,8 +162,8 @@ export default async function PlanReportPage({ searchParams }: Props) {
   // 채점했는지라도 밝힌다 (diagnosePlan이 오늘 출발로 가정해 계산한다)
   const tripRange = q.from
     ? days === 1
-      ? formatKoreanDate(q.from)
-      : `${formatKoreanDate(q.from)} → ${formatKoreanDate(addDaysISO(q.from, days - 1))}`
+      ? dateText(q.from)
+      : `${dateText(q.from)} → ${dateText(addDaysISO(q.from, days - 1))}`
     : "출발일 미설정 · 오늘 기준";
 
   return (
@@ -196,11 +221,19 @@ export default async function PlanReportPage({ searchParams }: Props) {
           </p>
         )}
 
-        {diagnosis.assumedToday && q.from && (
+        {droppedCount > 0 && (
           <p className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 ring-1 ring-amber-200">
-            출발일({formatKoreanDate(q.from)})이 지나, 아래 점수는{" "}
-            <strong>오늘({formatKoreanDate(todayISOSeoul())}) 기준</strong>으로 다시
-            계산했어요. 일차별 날짜는 원래 계획 날짜입니다.
+            데이터에서 찾지 못한 <strong>{droppedCount}곳</strong>은 이 리포트에서
+            빠졌어요. 링크가 오래됐거나 관광지 정보가 바뀐 경우입니다.
+          </p>
+        )}
+
+        {staleFrom && q.from && (
+          <p className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 ring-1 ring-amber-200">
+            출발일({dateText(q.from)})이{" "}
+            {staleFrom === "past" ? "지나" : "1년 넘게 남아"}, 아래 점수는{" "}
+            <strong>오늘({formatKoreanDate(today)}) 기준</strong>으로 계산했어요.
+            일차별 날짜는 원래 계획 날짜입니다.
           </p>
         )}
 
@@ -271,9 +304,16 @@ export default async function PlanReportPage({ searchParams }: Props) {
             <section key={i} className="mt-6 print:mt-4">
               <h2 className="text-base font-bold text-slate-900">
                 {dayLabel(i + 1)}
-                {/* 점수 근거는 날짜가 정하므로 하루에 한 번만 밝힌다 (스톱마다 반복하지 않는다) */}
+                {/* 점수 근거는 날짜가 정하므로 하루에 한 번만 밝힌다 (스톱마다 반복하지 않는다).
+                    데이터 없는 스톱이 맨 앞에 오면 그 하나 때문에 하루 전체가
+                    "데이터 없음"으로 적히므로, 점수가 나온 스톱을 기준으로 삼는다 */}
                 <span className="ml-1.5 text-xs font-semibold text-slate-400">
-                  {STOP_MODE_LABEL[dayRows[0].stop.mode]}
+                  {
+                    STOP_MODE_LABEL[
+                      dayRows.find((r) => r.stop.mode !== "unknown")?.stop.mode ??
+                        "unknown"
+                    ]
+                  }
                 </span>
               </h2>
               <ul className="mt-2">
