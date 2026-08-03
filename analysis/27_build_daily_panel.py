@@ -93,18 +93,20 @@ panel = wx.merge(agg, on=["sigungu", "d"], how="left")
 count_cols = ["acc_all", "acc_outdoor", *CAUSE]
 panel[count_cols] = panel[count_cols].fillna(0).astype(int)
 
-# ── 노출 분모(선택) — 있으면 붙이고 없으면 건너뛴다 ──
+# ── 노출 분모 — 있으면 붙이고 없으면 건너뛴다 ──
 # 30번이 보인 대로, 이 열이 없으면 기온 효과를 노출과 분리할 수 없다.
-# 스키마: sigungu,year,month,visitors  (시군×월 방문자수)
-# 출처: 한국관광공사_지역별 방문자수_GW (data.go.kr 15101972) — docs/API키_발급_가이드.md §3.6
-VISITORS = "data/visitors_monthly.csv"
+# 스키마: sigungu,d,visitors (시군×일 외지인 방문자수) — 31_collect_visitors.py 산출.
+# 출처: 한국관광공사_빅데이터_지역별 방문자수_GW (data.go.kr 15101972).
+# **일별**이라 패널과 1:1로 붙는다 — 월별로 근사할 필요가 없다.
+VISITORS = "data/visitors_daily.csv"
 if os.path.exists(VISITORS):
     v = pd.read_csv(VISITORS, encoding="utf-8-sig")
-    need = {"sigungu", "year", "month", "visitors"}
+    need = {"sigungu", "d", "visitors"}
     missing = need - set(v.columns)
     if missing:
         raise SystemExit(f"{VISITORS} 컬럼 부족: {missing} (필요: {sorted(need)})")
-    panel = panel.merge(v[sorted(need)], on=["sigungu", "year", "month"], how="left")
+    v["d"] = pd.to_datetime(v["d"])
+    panel = panel.merge(v[["sigungu", "d", "visitors"]], on=["sigungu", "d"], how="left")
     n_missing = int(panel["visitors"].isna().sum())
     print(f"노출 분모 병합: {VISITORS} · 결측 {n_missing}/{len(panel)}셀")
 else:
