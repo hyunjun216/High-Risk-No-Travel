@@ -3,6 +3,7 @@ import {
   isValidSavedPlanList,
   MAX_SAVED_PLANS,
   removeSavedPlan,
+  duplicateNameExists,
   evictedBySaving,
   savedEntryFor,
   updateTargetFor,
@@ -154,6 +155,27 @@ describe("updateTargetFor — 이름이 같을 때만 갱신", () => {
     expect(
       updateTargetFor(list, { ...BASE, savedId: "없는id" }, "설악산 여행"),
     ).toBeNull();
+  });
+});
+
+describe("duplicateNameExists", () => {
+  const list = [entry("p0", "설악산 여행")];
+  const BASE: TravelPlan = {
+    items: [{ contentId: 1, title: "A", lat: 37.75, lng: 128.87 }],
+  };
+
+  it("비우기 후 같은 이름으로 저장하면 중복이 생긴다고 알린다", () => {
+    expect(duplicateNameExists(list, BASE, "설악산 여행")).toBe(true);
+  });
+
+  it("갱신이면 중복이 아니다", () => {
+    expect(
+      duplicateNameExists(list, { ...BASE, savedId: "p0" }, "설악산 여행"),
+    ).toBe(false);
+  });
+
+  it("이름이 겹치지 않으면 중복이 아니다", () => {
+    expect(duplicateNameExists(list, BASE, "강릉 여행")).toBe(false);
   });
 });
 

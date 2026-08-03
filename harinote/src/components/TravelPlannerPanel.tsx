@@ -8,6 +8,7 @@ import MultiDayCourseModal from "@/components/MultiDayCourseModal";
 import { useTravelPlan } from "@/hooks/useTravelPlan";
 import { useSavedPlans } from "@/hooks/useSavedPlans";
 import {
+  duplicateNameExists,
   evictedBySaving,
   MAX_SAVED_PLANS,
   updateTargetFor,
@@ -136,6 +137,7 @@ export default function TravelPlannerPanel({
   // 지금 입력된 이름으로 저장하면 갱신인지 새 계획인지 — 입력 중에도 실시간으로 갈린다
   const pendingName = saveName.trim() || defaultName;
   const updateTarget = updateTargetFor(savedList, plan, pendingName);
+  const duplicateName = duplicateNameExists(savedList, plan, pendingName);
   // 지금 저장하면 밀려날 계획 (보관함이 가득 찬 새 계획일 때만)
   const evicted = evictedBySaving(savedList, plan, pendingName);
   const confirmSave = () => {
@@ -390,6 +392,14 @@ export default function TravelPlannerPanel({
                 ? `새 계획으로 저장합니다 — 저장한 "${origin.name}"은(는) 그대로 남아요`
                 : "새 계획으로 저장합니다"}
           </p>
+          {/* 같은 이름이 이미 있는데 갱신은 아닌 경우 — 합치지 않고 둘 다 남기되 미리 알린다.
+              이름만 보고 덮어쓰면 방금 고친 "조용히 사라지는 계획"이 그대로 돌아온다 */}
+          {duplicateName && (
+            <p className="w-full text-xs font-semibold text-amber-600">
+              같은 이름의 계획이 이미 있어요 — 합쳐지지 않고 둘 다 남습니다.
+              구분하려면 이름을 바꿔주세요
+            </p>
+          )}
           {/* 보관함이 가득 찼을 때 무엇이 사라지는지 저장 "전에" 알린다 —
               사용자 데이터가 조용히 없어지지 않게 하는 것이 상한값보다 중요하다 */}
           {evicted && (

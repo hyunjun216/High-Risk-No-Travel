@@ -60,6 +60,23 @@ export function updateTargetFor(
 }
 
 /**
+ * 이 이름으로 저장하면 같은 이름의 계획이 하나 더 생기는가.
+ *
+ * 갱신 규칙이 "같은 이름"이라 사용자는 같은 이름이면 늘 합쳐진다고 읽는다. 하지만
+ * 비우기 후 새로 짠 계획은 savedId가 없어 갱신 대상이 아니고, 이름이 같아도 별개로
+ * 쌓인다(그렇다고 이름만 보고 덮어쓰면 남의 계획이 조용히 사라진다). 그래서 합치지
+ * 않되 미리 알린다.
+ */
+export function duplicateNameExists(
+  list: SavedPlan[],
+  plan: TravelPlan,
+  name: string,
+): boolean {
+  if (updateTargetFor(list, plan, name)) return false;
+  return list.some((p) => p.name === name.trim());
+}
+
+/**
  * 이 계획을 저장하면 밀려날 계획 — 없으면 null.
  *
  * 상한에 닿았을 때 오래된 계획이 아무 안내 없이 사라지던 것을 UI가 미리 알리기 위한
