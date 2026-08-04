@@ -89,9 +89,13 @@ export default async function ReportPage({ params, searchParams }: Props) {
       {/* 인쇄 시 사이트 헤더·푸터 숨김 + A4 한 장 맞춤 — 이 라우트에만 적용 */}
       <style>{`
         @media print {
-          @page { size: A4; margin: 10mm 12mm; }
+          /* 여백을 0으로 두어야 브라우저가 날짜·문서제목 머리글/바닥글을 찍지 않는다.
+             종이 여백은 .report-sheet 안쪽 padding으로 준다 */
+          @page { size: A4; margin: 0; }
           body > header, body > footer { display: none !important; }
           body { background: #fff !important; }
+          /* 문서 여백 — 한글·워드 기본값대로 20mm대 (계획 리포트와 동일) */
+          .report-sheet { padding: 20mm; }
           section { break-inside: avoid; }
         }
       `}</style>
@@ -103,7 +107,7 @@ export default async function ReportPage({ params, searchParams }: Props) {
         <span aria-hidden="true">←</span> 상세로 돌아가기
       </Link>
 
-      <article className="mt-4 rounded-2xl bg-white p-6 ring-1 ring-slate-200 print:mt-0 print:rounded-none print:p-0 print:ring-0">
+      <article className="report-sheet mt-4 rounded-2xl bg-white p-6 ring-1 ring-slate-200 print:mt-0 print:rounded-none print:ring-0">
         {/* ① 헤더 */}
         <header className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-4 print:pb-3">
           <div>

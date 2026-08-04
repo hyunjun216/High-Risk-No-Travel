@@ -34,6 +34,7 @@ import {
 import { parseProfile, type SearchParamValue } from "@/components/search-params";
 import CourseRouteMap from "@/components/CourseRouteMap";
 import ReportActions from "@/components/ReportActions";
+import { GRADE_STYLE } from "@/components/SafetyScoreBadge";
 
 interface Props {
   searchParams: Promise<Record<string, SearchParamValue>>;
@@ -44,12 +45,6 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
   const q = parseReportQuery(sp.s, sp.from, sp.name);
   return { title: q?.name ? `${q.name} 계획 리포트` : "여행 계획 리포트" };
 }
-
-const GRADE_TEXT_CLASS = {
-  low: "text-teal-600",
-  moderate: "text-amber-600",
-  high: "text-red-600",
-} as const;
 
 interface ReportRow {
   stop: StopDiagnosisDto;
@@ -104,6 +99,19 @@ export default async function PlanReportPage({ searchParams }: Props) {
     (r) => r.stop.grade !== null && r.stop.grade !== "low",
   );
 
+  // 동선은 하루 안에서만 이어지므로 일차별 거리를 합한다 (마지막 스톱 → 다음 날 첫 스톱은 이동이 아니다)
+  const planItems = (dayRows: ReportRow[]) =>
+    dayRows.map(({ place }) => ({
+      contentId: place.contentId,
+      title: place.title,
+      lat: place.lat,
+      lng: place.lng,
+    }));
+  const tripDistanceKm =
+    Math.round(
+      byDay.reduce((sum, dayRows) => sum + totalDistanceKm(planItems(dayRows)), 0) * 10,
+    ) / 10;
+
   const checklist = buildPlanChecklist(
     rows.map((r) => ({
       riskFactors: r.stop.riskFactors,
@@ -128,9 +136,6 @@ export default async function PlanReportPage({ searchParams }: Props) {
     dateISO.slice(0, 4) === today.slice(0, 4)
       ? formatKoreanDate(dateISO)
       : `${dateISO.slice(0, 4)}년 ${formatKoreanDate(dateISO)}`;
-
-  const dayLabel = (day: number) =>
-    q.from ? `${day}일차 · ${dateText(addDaysISO(q.from, day - 1))}` : `${day}일차`;
 
   // diagnosePlan은 "지난 날짜"와 "1년 넘게 남은 날짜"를 똑같이 오늘 출발로 되돌린다.
   // 한 문구로 뭉뚱그리면 내년 여행 계획에 "출발일이 지났다"는 거짓말이 나간다
@@ -174,13 +179,23 @@ export default async function PlanReportPage({ searchParams }: Props) {
           인쇄 폭(A4≈794px)이 sm 분기점을 넘어 화면용 여백이 인쇄물에 따라붙는다 */}
       <style>{`
         @media print {
-          @page { size: A4; margin: 10mm 12mm; }
+          /* 여백을 0으로 두어야 브라우저가 날짜·문서제목 머리글/바닥글을 찍지 않는다.
+             종이 여백은 .a4-sheet 안쪽 padding으로 준다 */
+          @page { size: A4; margin: 0; }
           body > header, body > footer { display: none !important; }
           body { background: #fff !important; }
+          /* 문서 여백 — 한글·워드 기본값대로 20mm대. @page 여백은 0이어야 브라우저
+             머리글/꼬리글이 안 찍히므로 여백은 여기서 준다 */
+          .a4-sheet { padding: 20mm; }
           section { break-inside: avoid; }
+          /* 일차 섹션은 반 페이지를 넘길 수 있어 통째로 미루면 빈 공간만 남는다 —
+             안에서 끊되 제목만 페이지 끝에 남거나 스톱 하나가 갈라지는 것은 막는다 */
+          .day-section { break-inside: auto; }
+          h2 { break-after: avoid; }
+          li { break-inside: avoid; }
         }
         @media screen and (min-width: 640px) {
-          .a4-sheet { min-height: 297mm; padding: 10mm 12mm; }
+          .a4-sheet { min-height: 297mm; padding: 20mm; }
         }
       `}</style>
 
@@ -193,7 +208,7 @@ export default async function PlanReportPage({ searchParams }: Props) {
 
       {/* A4 한 장(.a4-sheet) — 안쪽 여백이 @page 여백과 같아 화면 줄바꿈이 인쇄물과 일치한다.
           좁은 화면에서는 폭만 줄인다 (A4 비율로 강제 축소하면 글씨가 읽을 수 없게 작아진다) */}
-      <article className="a4-sheet mt-4 bg-white px-5 py-6 shadow-lg ring-1 ring-slate-200 print:mt-0 print:p-0 print:shadow-none print:ring-0">
+      <article className="a4-sheet mt-4 bg-white px-5 py-6 shadow-lg ring-1 ring-slate-200 print:mt-0 print:shadow-none print:ring-0">
         {/* ① 헤더 */}
         <header className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-4 print:pb-3">
           <div className="min-w-0">
@@ -214,22 +229,24 @@ export default async function PlanReportPage({ searchParams }: Props) {
             이 사실을 밝히지 않으면 "1일차 · 8월 1일"이라는 제목 아래 오늘 날씨로 매긴 점수가
             놓여, 리포트 전체가 지난 날짜의 예보인 것처럼 읽힌다. */}
         {/* 상한 초과로 뒤쪽 스톱이 빠졌다 — 조용히 사라지면 리포트를 완전한 것으로 읽는다 */}
+        {/* 세 배너는 예외 안내일 뿐이라 채운 카드로 두면 결론(② 요약)보다 먼저 눈에 든다.
+            왼쪽 선만 남긴 주석 스타일로 낮춘다 */}
         {q.truncated && (
-          <p className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 ring-1 ring-amber-200">
+          <p className="mt-3 border-l-2 border-amber-400 pl-3 text-xs leading-relaxed text-slate-600">
             스톱이 {REPORT_MAX_STOPS}곳을 넘어 <strong>앞 {REPORT_MAX_STOPS}곳만</strong>{" "}
             담았어요. 나머지는 이 리포트에 없습니다.
           </p>
         )}
 
         {droppedCount > 0 && (
-          <p className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 ring-1 ring-amber-200">
+          <p className="mt-3 border-l-2 border-amber-400 pl-3 text-xs leading-relaxed text-slate-600">
             데이터에서 찾지 못한 <strong>{droppedCount}곳</strong>은 이 리포트에서
             빠졌어요. 링크가 오래됐거나 관광지 정보가 바뀐 경우입니다.
           </p>
         )}
 
         {staleFrom && q.from && (
-          <p className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 ring-1 ring-amber-200">
+          <p className="mt-3 border-l-2 border-amber-400 pl-3 text-xs leading-relaxed text-slate-600">
             출발일({dateText(q.from)})이{" "}
             {staleFrom === "past" ? "지나" : "1년 넘게 남아"}, 아래 점수는{" "}
             <strong>오늘({formatKoreanDate(today)}) 기준</strong>으로 계산했어요.
@@ -237,21 +254,39 @@ export default async function PlanReportPage({ searchParams }: Props) {
           </p>
         )}
 
-        {/* ② 계획 요약 */}
+        {/* ② 계획 요약 — 지표 넉 줄로 규모를 먼저 보이고, 결론은 한 줄로.
+            이 결론 배너가 종이에서 유일한 색 블록이라 눈이 먼저 닿는다 */}
         <section className="mt-5 print:mt-4">
+          {/* 가장 주의할 곳은 아래 결론 배너가 말한다 — 여기서 되풀이하지 않는다 */}
+          <dl className="grid grid-cols-3 gap-x-4">
+            {[
+              { k: "일정", v: `${days}일 · ${rows.length}곳` },
+              { k: "총 이동(직선)", v: `${tripDistanceKm}km` },
+              { k: "주의 스톱", v: `${riskyRows.length}곳 / ${rows.length}곳` },
+            ].map(({ k, v }) => (
+              <div key={k} className="border-l-2 border-slate-200 pl-2.5">
+                <dt className="text-[11px] font-semibold text-slate-400">{k}</dt>
+                <dd className="truncate text-sm font-bold tabular-nums text-slate-800">
+                  {v}
+                </dd>
+              </div>
+            ))}
+          </dl>
+
           {riskyRows.length === 0 ? (
-            <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 ring-1 ring-emerald-200">
+            <p className="mt-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 ring-1 ring-emerald-200">
               전 스톱 방문 주의 요인 낮음 — 일정 그대로 진행해도 좋아요
             </p>
           ) : (
-            <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 ring-1 ring-amber-200">
-              주의 스톱 {riskyRows.length}곳
-              {worst && worst.stop.score !== null && (
+            // 스톱 수는 바로 위 지표가 말했으므로 되풀이하지 않고 어디를 볼지만 짚는다
+            <p className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 ring-1 ring-amber-200">
+              {worst && worst.stop.score !== null ? (
                 <>
-                  {" — 가장 주의가 필요한 곳: "}
-                  <strong>{worst.place.title}</strong>{" "}
+                  가장 주의가 필요한 곳: <strong>{worst.place.title}</strong>{" "}
                   <span className="tabular-nums">({worst.stop.score}점)</span>
                 </>
+              ) : (
+                <>일차별 점검에서 ⚠ 표시된 스톱을 확인하세요</>
               )}
             </p>
           )}
@@ -301,13 +336,21 @@ export default async function PlanReportPage({ searchParams }: Props) {
         {/* ④ 일차별 점검 — 시간 슬롯을 왼쪽 축으로 세워 하루 흐름이 보이게 한다 */}
         {byDay.map((dayRows, i) =>
           dayRows.length === 0 ? null : (
-            <section key={i} className="mt-6 print:mt-4">
-              <h2 className="text-base font-bold text-slate-900">
-                {dayLabel(i + 1)}
+            // 하루의 시작점을 구분선으로 세운다 — 섹션 제목이 모두 같은 크기라
+            // 구분이 없으면 이틀 이상 계획에서 어디부터 다음 날인지 스캔되지 않는다
+            <section
+              key={i}
+              className="day-section mt-6 border-t border-slate-200 pt-4 print:mt-4 print:pt-3"
+            >
+              <h2 className="flex flex-wrap items-center gap-x-2 text-base font-bold text-slate-900">
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-extrabold text-slate-600">
+                  {i + 1}일차
+                </span>
+                {q.from && <span>{dateText(addDaysISO(q.from, i))}</span>}
                 {/* 점수 근거는 날짜가 정하므로 하루에 한 번만 밝힌다 (스톱마다 반복하지 않는다).
                     데이터 없는 스톱이 맨 앞에 오면 그 하나 때문에 하루 전체가
                     "데이터 없음"으로 적히므로, 점수가 나온 스톱을 기준으로 삼는다 */}
-                <span className="ml-1.5 text-xs font-semibold text-slate-400">
+                <span className="text-xs font-semibold text-slate-400">
                   {
                     STOP_MODE_LABEL[
                       dayRows.find((r) => r.stop.mode !== "unknown")?.stop.mode ??
@@ -352,7 +395,7 @@ export default async function PlanReportPage({ searchParams }: Props) {
                           </p>
                           {stop.score !== null && stop.grade !== null ? (
                             <span
-                              className={`shrink-0 text-sm font-extrabold tabular-nums ${GRADE_TEXT_CLASS[stop.grade]}`}
+                              className={`shrink-0 text-sm font-extrabold tabular-nums ${GRADE_STYLE[stop.grade].text}`}
                             >
                               {stop.grade !== "low" && "⚠ "}
                               {stop.score}점
@@ -384,15 +427,7 @@ export default async function PlanReportPage({ searchParams }: Props) {
                   <p className="mt-1.5 text-xs font-semibold text-slate-500">
                     이동 직선{" "}
                     <span className="tabular-nums">
-                      {totalDistanceKm(
-                        dayRows.map(({ place }) => ({
-                          contentId: place.contentId,
-                          title: place.title,
-                          lat: place.lat,
-                          lng: place.lng,
-                        })),
-                      )}
-                      km
+                      {totalDistanceKm(planItems(dayRows))}km
                     </span>{" "}
                     — 실제 소요 시간은 지도 앱에서 확인하세요
                   </p>
