@@ -29,7 +29,6 @@ import {
   LANDSLIDE,
   MEDICAL,
   PROFILE_WEIGHT,
-  SHELTER,
   SUN_RAIN_ADJ,
   type SafetyTuning,
   gradeForScore,
@@ -39,7 +38,6 @@ import {
   levelForPoints,
   medicalPoints,
   pmGradeLabel,
-  shelterPoints,
 } from "@/lib/safety/weights";
 import { computeTciBreakdown } from "@/lib/safety/tci";
 
@@ -74,8 +72,6 @@ export function computeSafetyScore(
   const hrBand = tuning.heavyRain ?? HEAVY_RAIN.POINTS;
   const medicalMult = tuning.medicalMult ?? 1;
   const medicalMax = MEDICAL.MAX_POINTS * medicalMult;
-  const shelterMult = tuning.shelterMult ?? 1;
-  const shelterMax = SHELTER.MAX_POINTS * shelterMult;
 
   // ── 쾌적층: 관광기후지수(TCI) ──
   // 폭염특보 기준이 "일 최고 체감온도"이므로 체감온도(apparentTempC) 우선, 없으면 건구온도.
@@ -325,33 +321,12 @@ export function computeSafetyScore(
     }`,
   });
 
-  // ── 대피소 (선택 입력) ──
-  let shelter = 0;
-  if (input.shelterKm !== undefined) {
-    shelter = Math.round(
-      Math.min(shelterMax, shelterPoints(input.shelterKm) * shelterMult),
-    );
-    factors.push({
-      key: "shelter",
-      label: "대피소",
-      value: input.shelterKm,
-      unit: "km",
-      threshold: SHELTER.WALKABLE_KM,
-      points: shelter,
-      maxPoints: shelterMax,
-      level: levelForPoints(shelter, shelterMax),
-      description: `최근접 대피소 ${input.shelterKm}km — 도보 접근권(${SHELTER.WALKABLE_KM}km) ${
-        input.shelterKm > SHELTER.WALKABLE_KM ? "초과" : "이내"
-      }`,
-    });
-  }
-
   // ── 합산: score = 100 − (쾌적 + 안전) ──
   // 재난 단계 감점이 등급컷에 앵커돼 있어(높음 45→≤55 주의, 매우높음/경보 80→≤20 방문자제)
   // 별도 override 없이 감점 합만으로 등급이 보장된다.
   // 감점 합이 100을 넘는 재난 중첩(예: 산불 매우높음 + 폭염)에서는 0점에서 멈춘다 —
   // 이때만 "점수 = 100 − 요인 합"이 성립하지 않는다. 등급은 이미 최하라 판정은 불변.
-  const disasterRisk = heavyRainPts + fire + landslide + shelter;
+  const disasterRisk = heavyRainPts + fire + landslide;
   const medicalRisk = medical;
   const total = weatherRisk + disasterRisk + medicalRisk;
   const score = Math.max(0, Math.min(100, 100 - total));

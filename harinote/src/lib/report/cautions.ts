@@ -6,7 +6,7 @@
  * 그래서 여기서는 감점(points)을 아예 쓰지 않고 관측·예보값(value)과 날짜만 쓴다.
  *
  * 기상 요인은 날짜가 정하므로 요인당 한 줄로 묶어 날짜를 문장 안에 넣고,
- * 응급의료·대피소는 장소가 정하므로 가장 나쁜 곳을 이름으로 지목한다.
+ * 응급의료는 장소가 정하므로 가장 나쁜 곳을 이름으로 지목한다.
  */
 import type { Profile, RiskFactorKey } from "@/lib/safety/types";
 import type { Place } from "@/lib/tour/types";
@@ -18,7 +18,6 @@ import {
   LANDSLIDE,
   PM25,
   RAIN_WIND,
-  SHELTER,
   pmGradeLabel,
 } from "@/lib/safety/weights";
 
@@ -63,7 +62,6 @@ const ORDER: Bucket[] = [
   "rain",
   "pm",
   "medical",
-  "shelter",
 ];
 
 /** 값이 나쁜 쪽 — 추위 계열만 낮을수록 나쁘다 */
@@ -80,7 +78,6 @@ const LOWER_IS_WORSE: Bucket[] = ["cold", "heat_cool"];
 const WORTH_WARNING: Partial<Record<Bucket, (v: number) => boolean>> = {
   wind: (v) => v >= RAIN_WIND.WIND_CAUTION_MS,
   pm: (v) => v > PM25.MODERATE_MAX, // '나쁨'부터
-  shelter: (v) => v >= SHELTER.MID_KM,
 };
 
 interface Collected {
@@ -273,12 +270,6 @@ export function buildPlanCautions(
           bucket,
           `${c.worstTitle} — 가장 가까운 응급실이 ${v}km 떨어져 있습니다. 상비약을 챙기고 가는 길의 병원 위치를 미리 봐 두세요.` +
             (withSeniors ? " 부모님 복용약은 일정보다 넉넉히 챙기세요." : ""),
-        );
-        break;
-      case "shelter":
-        add(
-          bucket,
-          `${c.worstTitle} — 가장 가까운 대피소가 ${v}km 떨어져 있습니다. 비상시 어디로 갈지 미리 정해 두세요.`,
         );
         break;
     }

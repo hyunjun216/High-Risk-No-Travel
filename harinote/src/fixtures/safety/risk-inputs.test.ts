@@ -86,7 +86,6 @@ describe("mockRiskInputFor — 시나리오 값 범위", () => {
         expect(r.pm25).toBeGreaterThanOrEqual(0);
         expect([1, 2, 3, 4]).toContain(r.forestFireLevel);
         expect(r.emergencyRoomKm).toBeGreaterThan(0);
-        expect(r.shelterKm).toBeUndefined(); // 대피소 축 비활성 (실데이터 확보 전)
       }
     }
   });

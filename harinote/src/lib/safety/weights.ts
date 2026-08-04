@@ -6,7 +6,7 @@
  *     (한국형 관광기후지수 KTCI 실증가중). 이 파일의 HEAT/RAIN_WIND/PM25 상수와
  *     *Points() 함수들은 그 이전 세대(v1)의 것으로, 현재 점수 계산에 쓰이지 않는다 —
  *     남아 있는 이유는 각 함수 주석 참조.
- *   · 안전층 = 호우·산불·산사태·응급의료·대피소. 값은 전부 이 파일에 있다.
+ *   · 안전층 = 호우·산불·산사태·응급의료. 값은 전부 이 파일에 있다.
  *
  * **근거의 등급을 값마다 표시한다** — ✅ 공공기준/자체실증 · 🟡 외부논문 인용 ·
  * ❌ 설계값(민감도 분석으로 강건성 방어).
@@ -362,28 +362,6 @@ export function medicalPoints(km: number): number {
 }
 
 // ─────────────────────────────────────────────
-// 대피소 접근성 (상한 10, 입력 없으면 0점 — 불이익 금지)
-// ─────────────────────────────────────────────
-/**
- * 행정안전부 민방위 대피시설 지정 원칙(주거지에서 도보 5분 내외 접근 권장)을 준용해
- * 도보 접근 가능권 약 1km를 기준으로 구간화.
- */
-export const SHELTER = {
-  WALKABLE_KM: 1,
-  NEAR_KM: 3,
-  MID_KM: 5,
-  MAX_POINTS: 10,
-} as const;
-
-/** 최근접 대피소 거리(km) → 기본 감점 */
-export function shelterPoints(km: number): number {
-  if (km <= SHELTER.WALKABLE_KM) return 0;
-  if (km <= SHELTER.NEAR_KM) return 3;
-  if (km <= SHELTER.MID_KM) return 6;
-  return SHELTER.MAX_POINTS;
-}
-
-// ─────────────────────────────────────────────
 // 환경 유형 가중 — TourAPI 카테고리 기반 자체 분류(PlaceEnvType)를 점수에 반영
 // ─────────────────────────────────────────────
 export interface EnvWeight {
@@ -548,8 +526,6 @@ export interface SafetyTuning {
   heavyRain?: { pre: number; watch: number; warn: number };
   /** 응급의료 감점 배율 — 표시 상한도 함께 스케일된다 (기본 1) */
   medicalMult?: number;
-  /** 대피소 감점 배율 — 표시 상한도 함께 스케일된다 (기본 1) */
-  shelterMult?: number;
   /** 한파 감점 배율 — 표시 상한도 함께 스케일된다 (기본 1). 곡선 크기가 설계값이라 교란 대상 */
   coldMult?: number;
   /**

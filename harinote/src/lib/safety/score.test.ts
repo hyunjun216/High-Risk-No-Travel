@@ -59,7 +59,7 @@ describe("computeSafetyScore — 기본/구조", () => {
 
   it("모든 요인 points는 0 이상의 정수", () => {
     const b = run(
-      { tempC: 36, apparentTempC: 38, rainProbPct: 85, rainMm: 70, windMs: 15, pm25: 80, forestFireLevel: 3, emergencyRoomKm: 35, shelterKm: 8 },
+      { tempC: 36, apparentTempC: 38, rainProbPct: 85, rainMm: 70, windMs: 15, pm25: 80, forestFireLevel: 3, emergencyRoomKm: 35 },
       "outdoor_water",
       "with_kids",
     );
@@ -260,13 +260,6 @@ describe("재난 경보급 — 감점 앵커로 총점 보장(별도 override �
   });
 });
 
-describe("shelter — 선택 입력", () => {
-  it("미제공 시 요인 없음", () => {
-    const b = run({});
-    expect(b.factors.some((f) => f.key === "shelter")).toBe(false);
-  });
-});
-
 describe("점수 일관성 / 등급", () => {
   // 재난 경보급 밴드에 안 드는 케이스들 (산불<4, 산사태<2)
   const cases: Array<[Partial<RiskInput>, PlaceEnvType, Profile]> = [
@@ -292,14 +285,14 @@ describe("점수 일관성 / 등급", () => {
   it("카테고리 소계 = 해당 요인 points 합", () => {
     const b = run(
       // tminC로 한파 축까지 켜서 기상 소계가 새 요인을 빠뜨리지 않는지 함께 잠근다
-      { tempC: 2, tminC: -14, rainMm: 10, rainProbPct: 70, pm25: 50, forestFireLevel: 3, shelterKm: 4 },
+      { tempC: 2, tminC: -14, rainMm: 10, rainProbPct: 70, pm25: 50, forestFireLevel: 3 },
       "outdoor_mountain",
     );
     expect(b.factors.some((f) => f.key === "cold")).toBe(true);
     const sum = (keys: RiskFactorKey[]) =>
       b.factors.filter((f) => keys.includes(f.key)).reduce((s, f) => s + f.points, 0);
     expect(b.weatherRisk).toBe(sum(["heat", "cold", "rain", "wind", "pm", "sun"]));
-    expect(b.disasterRisk).toBe(sum(["heavy_rain", "forest_fire", "landslide", "shelter"]));
+    expect(b.disasterRisk).toBe(sum(["heavy_rain", "forest_fire", "landslide"]));
     expect(b.medicalRisk).toBe(sum(["medical"]));
   });
 
@@ -411,7 +404,7 @@ describe("요인 표시 상한", () => {
         sunHours: undefined,
         rainMm: undefined,
       },
-      { ...CLEAR, rainMm: 95, rainProbPct: 95, landslideLevel: 2, shelterKm: 9 },
+      { ...CLEAR, rainMm: 95, rainProbPct: 95, landslideLevel: 2 },
     ];
     const envs: PlaceEnvType[] = [
       "indoor",
@@ -439,7 +432,7 @@ describe("SafetyTuning 주입", () => {
   const CASES: RiskInput[] = [
     CLEAR,
     { ...CLEAR, tempC: 36, apparentTempC: 38, forestFireLevel: 3 },
-    { ...CLEAR, rainMm: 95, rainProbPct: 95, landslideLevel: 2, shelterKm: 4 },
+    { ...CLEAR, rainMm: 95, rainProbPct: 95, landslideLevel: 2 },
     { ...CLEAR, emergencyRoomKm: 35, forestFireLevel: 4 },
   ];
   const ENVS: PlaceEnvType[] = [
@@ -466,7 +459,6 @@ describe("SafetyTuning 주입", () => {
       landslide: LANDSLIDE.POINTS_BY_LEVEL,
       heavyRain: HEAVY_RAIN.POINTS,
       medicalMult: 1,
-      shelterMult: 1,
       env: { outdoor_mountain: ENV_WEIGHT.outdoor_mountain },
     };
     for (const input of CASES) {

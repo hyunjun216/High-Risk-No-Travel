@@ -4,7 +4,6 @@ import FestivalSection from "@/components/FestivalSection";
 import { hasLiveRiskKeys } from "@/lib/risk/live";
 import { hasForestKey } from "@/lib/risk/forest";
 import { medicalDataSource } from "@/lib/risk/medical";
-import { shelterDataSource } from "@/lib/risk/shelter";
 import { addDaysISO, formatKoreanDate, todayISOSeoul } from "@/lib/date";
 import SearchBox from "@/components/SearchBox";
 import DateStepper from "@/components/DateStepper";
@@ -98,7 +97,7 @@ export default async function Home({ searchParams }: Props) {
             방문 전 기상특보와 현지 안내를 반드시 확인하세요.
           </p>
           <p className="mt-1">
-            데이터 출처: 한국관광공사 TourAPI · {medicalDataSource()} · {shelterDataSource()}
+            데이터 출처: 한국관광공사 TourAPI · {medicalDataSource()}
             {hasLiveRiskKeys()
               ? hasForestKey()
                 ? " · 기상청 · AirKorea(한국환경공단) · 산림청(산불위험예보)."

@@ -61,15 +61,8 @@ const WEATHER_COMBOS: Array<{
   // 호우경보급 — 산사태 경보까지
   { rainMm: 95, rainProbPct: 95, fireLevels: [1], landslideLevels: [undefined, 1, 2] },
 ];
-/**
- * 응급의료 거리(km)와 그에 대응하는 대피소 거리(km).
- * 오지일수록 둘 다 먼 실제 경향을 반영해 함께 움직인다(그리드 크기 유지).
- */
-const ACCESS = [
-  { erKm: 5, shelterKm: 0.5 },
-  { erKm: 18, shelterKm: 2 },
-  { erKm: 35, shelterKm: 6 },
-] as const;
+/** 응급의료 거리(km) — 도심·중간·오지 3단계 */
+const ACCESS = [{ erKm: 5 }, { erKm: 18 }, { erKm: 35 }] as const;
 const ENV_TYPES: PlaceEnvType[] = [
   "indoor",
   "outdoor_water",
@@ -126,7 +119,6 @@ export function buildGrid(): Cell[] {
                     forestFireLevel,
                     landslideLevel,
                     emergencyRoomKm: acc.erKm,
-                    shelterKm: acc.shelterKm,
                   },
                 });
   return cells;
@@ -239,12 +231,6 @@ export function buildPerturbations(): Perturbation[] {
     });
     out.push({
       tier: "A",
-      name: `대피소 ${pct}`,
-      tuning: { shelterMult: f },
-      isActive: (c) => c.input.shelterKm !== undefined,
-    });
-    out.push({
-      tier: "A",
       name: `한파 곡선 ${pct}`,
       tuning: { coldMult: f },
       isActive: isColdActive,
@@ -261,7 +247,6 @@ export function buildPerturbations(): Perturbation[] {
           warn: HEAVY_RAIN.POINTS.warn * f,
         },
         medicalMult: f,
-        shelterMult: f,
         coldMult: f,
       },
       isActive: () => true,

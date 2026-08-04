@@ -6,7 +6,7 @@
  * 등급 변별(전 시군 동일 등급인가) · 점수 스프레드 · 시나리오 간 순위 변동을 출력한다.
  *
  * 기상은 시나리오 상수를 쓰므로 네트워크·키 불필요하고 결과가 결정적이다
- * (응급의료·대피소 거리만 내장 좌표로 실계산).
+ * (응급의료 거리만 내장 좌표로 실계산).
  * 안전점수 축을 손댈 때 변경 전후를 같은 절차로 비교하는 기준선 역할.
  */
 import rawPlaces from "../src/data/gangwon.json";
@@ -14,7 +14,6 @@ import { applyEnvTypeOverrides } from "../src/lib/tour/env-overrides";
 import { computeSafetyScore } from "../src/lib/safety/score";
 import { summarizeRegions } from "../src/lib/risk/region-summary";
 import { nearestHospitalKm } from "../src/lib/risk/medical";
-import { nearestShelterKm } from "../src/lib/risk/shelter";
 import type { Place } from "../src/lib/tour/types";
 import type { RiskInput } from "../src/lib/safety/types";
 
@@ -52,7 +51,6 @@ function scoreAll(base: RiskInput) {
     const input: RiskInput = {
       ...base,
       emergencyRoomKm: Math.round(nearestHospitalKm(p.lat, p.lng, p.contentId) * 10) / 10,
-      shelterKm: Math.round(nearestShelterKm(p.lat, p.lng, p.contentId) * 10) / 10,
     };
     return { ...p, safety: computeSafetyScore(input, p, "default") };
   });

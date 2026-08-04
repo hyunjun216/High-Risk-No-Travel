@@ -146,7 +146,7 @@ const md = `# 24-결과. 안전점수 민감도 분석 실측
 ## 측정 설계
 
 - 그리드 **${GRID_SIZE.toLocaleString()}셀** = 체감온도 5 × 강수 4 × 미세먼지 3 × 산불 4단계 ×
-  산사태 3 × 응급의료·대피소 3 × 환경유형 **5(전체)**
+  산사태 3 × 응급의료 3 × 환경유형 **5(전체)**
 - 교란 **${results.length}종** × 그리드 = **${(GRID_SIZE * results.length).toLocaleString()}건**
 - 서비스가 실제로 쓰는 \`computeSafetyScore\`를 그대로 호출한다 (별도 포팅 없음)
 

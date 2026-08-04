@@ -9,7 +9,6 @@ import { getPlace, getPlacesWithSafety, getRiskInput } from "@/lib/datasource";
 import { computeSafetyScore } from "@/lib/safety/score";
 import { PROFILE_LABEL } from "@/lib/safety/types";
 import { medicalDataSource, nearestHospital } from "@/lib/risk/medical";
-import { shelterDataSource } from "@/lib/risk/shelter";
 import { hasLiveRiskKeys } from "@/lib/risk/live";
 import { hasForestKey } from "@/lib/risk/forest";
 import { recommendAlternatives } from "@/lib/reco/alternatives";
@@ -245,7 +244,7 @@ export default async function ReportPage({ params, searchParams }: Props) {
             방문 전 기상특보와 현지 안내를 반드시 확인하세요.
           </p>
           <p className="mt-1">
-            데이터 출처: 한국관광공사 TourAPI · {medicalDataSource()} · {shelterDataSource()}
+            데이터 출처: 한국관광공사 TourAPI · {medicalDataSource()}
             {hasLiveRiskKeys()
               ? hasForestKey()
                 ? " · 기상청 · AirKorea(한국환경공단) · 산림청(산불위험예보)."

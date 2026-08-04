@@ -16,7 +16,6 @@ import type { Profile, RiskBreakdown, RiskInput } from "@/lib/safety/types";
 import { computeSafetyScore } from "@/lib/safety/score";
 import { coldPoints } from "@/lib/safety/weights";
 import { nearestHospitalKm } from "./medical";
-import { nearestShelterKm } from "./shelter";
 
 /** 기온감률 ℃/m — 시군 대표점과 관광지의 표고 차 보정 */
 const LAPSE = 0.0065;
@@ -82,15 +81,10 @@ export function seasonalRange(
   const erRaw = nearestHospitalKm(place.lat, place.lng, place.contentId);
   const emergencyRoomKm = Number.isFinite(erRaw) ? Math.round(erRaw * 10) / 10 : 10;
 
-  // 대피소 거리 — live 경로와 동일하게 내장 좌표 실계산 (데이터 없으면 축 비활성)
-  const shRaw = nearestShelterKm(place.lat, place.lng, place.contentId);
-  const shelterKm = Number.isFinite(shRaw) ? Math.round(shRaw * 10) / 10 : undefined;
-
   const common = {
     pm25: SEASONAL_PM25,
     forestFireLevel: FIRE_BY_MONTH[month],
     emergencyRoomKm,
-    ...(shelterKm !== undefined ? { shelterKm } : {}),
   };
   // 최저기온(tminC)은 점수 엔진의 한파 축 입력이다 — 통상일은 중앙값, 궂은날은 하위 10분위
   const typicalInput: RiskInput = {

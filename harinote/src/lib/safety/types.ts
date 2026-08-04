@@ -57,8 +57,6 @@ export interface RiskInput {
   landslideLevel?: 0 | 1 | 2;
   /** 최근접 응급의료기관까지 거리 km (보건복지부) */
   emergencyRoomKm: number;
-  /** 최근접 대피소까지 거리 km (행정안전부, 선택) */
-  shelterKm?: number;
 }
 
 export type RiskFactorKey =
@@ -71,8 +69,7 @@ export type RiskFactorKey =
   | "heavy_rain" // 호우 침수·급류 (기상청 호우 특보 severity, 안전층)
   | "forest_fire" // 산불
   | "landslide" // 산사태 (강우×지형 프록시 + 산림청 예보발령 override)
-  | "medical" // 응급의료 접근성
-  | "shelter"; // 대피소 접근성
+  | "medical"; // 응급의료 접근성
 
 export type RiskLevel = "low" | "moderate" | "high";
 

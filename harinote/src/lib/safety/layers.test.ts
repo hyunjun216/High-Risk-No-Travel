@@ -23,10 +23,10 @@ describe("layerTotals — 쾌적/안전 층 분리", () => {
   it("관광기후지수 축은 쾌적, 재난·의료는 안전", () => {
     const totals = layerTotals([
       f("heat", 10), f("rain", 5), f("wind", 2), f("pm", 3), f("sun", 1), // 쾌적 21
-      f("forest_fire", 15), f("medical", 4), f("shelter", 3), // 안전 22
+      f("forest_fire", 15), f("medical", 4), // 안전 19
     ]);
     expect(totals.comfort).toBe(21);
-    expect(totals.safety).toBe(22);
+    expect(totals.safety).toBe(19);
   });
 
   it("한파는 안전층 — 기상 현상이지만 기준이 한파특보(위험)다", () => {
@@ -46,7 +46,7 @@ describe("layerTotals — 쾌적/안전 층 분리", () => {
   it("두 층의 합 = 전체 감점 합 (엔진 실제 출력으로 확인)", () => {
     const input: RiskInput = {
       tempC: -2, tminC: -13, rainProbPct: 70, rainMm: 40, windMs: 8, sunHours: 3,
-      pm25: 55, forestFireLevel: 2, emergencyRoomKm: 22, shelterKm: 4,
+      pm25: 55, forestFireLevel: 2, emergencyRoomKm: 22,
     };
     const b = computeSafetyScore(input, { envType: "outdoor_mountain" }, "with_kids");
     const totals = layerTotals(b.factors);
@@ -64,7 +64,7 @@ describe("meetsCourseSafety — 코스 스톱 자격은 안전층만 본다", ()
     computeSafetyScore(
       {
         tempC: 20, rainProbPct: 0, pm25: 12, windMs: 2, sunHours: 9,
-        forestFireLevel: 1, emergencyRoomKm: 5, shelterKm: 0.5,
+        forestFireLevel: 1, emergencyRoomKm: 5,
         ...over,
       },
       { envType },

@@ -51,15 +51,6 @@ describe("buildPlanCautions", () => {
     expect(out).not.toContain("금대계곡");
   });
 
-  it("대피소도 가장 먼 곳 기준으로 한 줄", () => {
-    const out = joined([
-      stop("2026-08-05", [["shelter", 8.2]], "outdoor_general", "금대계곡"),
-    ]);
-    expect(out).toContain("금대계곡");
-    expect(out).toContain("8.2km");
-    expect(out).toContain("대피소");
-  });
-
   it("같은 요인이 여러 날이면 한 줄로 묶고 날짜를 나열한다", () => {
     const out = buildPlanCautions(
       [stop("2026-08-05", [["rain", 40]]), stop("2026-08-06", [["rain", 70]])],
@@ -176,13 +167,6 @@ describe("buildPlanCautions", () => {
       const bad = buildPlanCautions([stop("2026-08-05", [["pm", 40]])], "default");
       expect(ok.some((c) => c.key === "pm")).toBe(false);
       expect(bad.some((c) => c.key === "pm")).toBe(true);
-    });
-
-    it("걸어갈 만한 거리의 대피소는 말하지 않는다", () => {
-      const near = buildPlanCautions([stop("2026-08-05", [["shelter", 1.5]])], "default");
-      const far = buildPlanCautions([stop("2026-08-05", [["shelter", 8.2]])], "default");
-      expect(near.some((c) => c.key === "shelter")).toBe(false);
-      expect(far.some((c) => c.key === "shelter")).toBe(true);
     });
 
     it("약한 값만 있는 날은 그 요인의 날짜에서도 빠진다", () => {
