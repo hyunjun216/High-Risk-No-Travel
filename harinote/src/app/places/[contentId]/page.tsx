@@ -393,6 +393,24 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
               <RiskBreakdownBar factors={analysisSafety.factors} />
             </div>
           </section>
+
+          {/* 추천 반나절 코스 — 점수 해설 바로 아래.
+              별도 행에 두면 왼쪽 컬럼이 오른쪽(요약+소개+지도+후기)보다 짧아
+              그 사이에 빈 띠가 생긴다. 같은 컬럼에 이어 붙이면 여백이 사라지고,
+              "이 점수라서 이 코스"라는 읽는 순서도 맞는다. */}
+          {course && (
+            <section>
+              <h2 className="text-lg font-bold text-slate-900">
+                추천 반나절 코스
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                {course.anchoredOnAlternative
+                  ? `오늘은 ${place.title} 대신 더 안전한 코스를 추천해요`
+                  : `${place.title}에서 시작하는 안전 코스예요`}
+              </p>
+              <CourseTimeline course={course} profile={profile} />
+            </section>
+          )}
         </div>
 
         <div className="min-w-0 space-y-6">
@@ -498,25 +516,9 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
         </div>
       </div>
 
-      {/*
-        "그래서 어디로" — 코스와 대체지는 카드가 넓어야 읽히고 세로도 길어(각 ~450px)
-        나란히 두면 낭비 없이 절반이 된다. 대체지는 절반 폭이므로 한 줄 2장.
-      */}
-      <div className="mt-8 grid gap-8 lg:grid-cols-2 lg:items-start">
-        {/* 추천 반나절 코스 */}
-        {course && (
-          <section className="min-w-0">
-            <h2 className="text-lg font-bold text-slate-900">추천 반나절 코스</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              {course.anchoredOnAlternative
-                ? `오늘은 ${place.title} 대신 더 안전한 코스를 추천해요`
-                : `${place.title}에서 시작하는 안전 코스예요`}
-            </p>
-            <CourseTimeline course={course} profile={profile} />
-          </section>
-        )}
-
-        {/* 안전한 대체지 추천 */}
+      {/* 안전한 대체지 추천 — 코스가 위 컬럼으로 올라가 이 행은 대체지 단독,
+          전체 폭이므로 최대 4장을 한 줄에 놓는다 */}
+      <div className="mt-8">
         <section className="min-w-0">
           <h2 className="text-lg font-bold text-slate-900">안전한 대체지 추천</h2>
           <p className="mt-1 text-sm text-slate-500">
@@ -544,7 +546,7 @@ export default async function PlaceDetailPage({ params, searchParams }: Props) {
               </Link>
             </div>
           ) : (
-            <div className="mt-3 grid gap-4 sm:grid-cols-2">
+            <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {alternatives.map((alt) => (
                 <PlaceCard
                   key={alt.contentId}
