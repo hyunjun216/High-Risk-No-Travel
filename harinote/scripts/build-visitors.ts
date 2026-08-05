@@ -1,15 +1,19 @@
 /**
  * 강원 주요관광지점 입장객수 빌드 스크립트 — 실행: npx tsx scripts/build-visitors.ts [--verify-only]
  *
- * 원본: 주요관광지점 입장객통계 (문화체육관광부·한국문화관광연구원, 관광자원통계서비스)
- *   - 데이터셋 페이지: https://www.data.go.kr/data/15000366/openapi.do
- *   - 엔드포인트: getPchrgTrrsrtVisitorList (유료관광지점 방문객수, XML)
- *   - TOUR_API_KEY 재사용 — 단 data.go.kr에서 이 API 활용신청(자동승인)이 따로 필요.
- *     미신청 시 resultCode 30 "SERVICE KEY IS NOT REGISTERED" (산불위험예보 forest.ts와 동일 전례)
- * 수집: 공표 최신월(현재월-2부터 역방향 탐색) 포함 최근 12개월 합산 = 연간 입장객수
+ * 원본: 주요관광지점 입장객통계 (문화체육관광부·한국문화관광연구원, 국가승인통계 113005)
+ *   - 관광지식정보시스템 통계표: https://know.tour.go.kr/stat/visitStatDis/table.do
+ *   - 화면의 조회를 그대로 호출한다(statTableData.do) — 연도별·강원 전체·유료+무료
+ *
+ * 왜 OpenAPI가 아닌가: 같은 통계의 공공데이터포털 API(getPchrgTrrsrtVisitorList)는
+ *   활용신청이 승인돼도 레거시 게이트웨이(openapi.tour.go.kr)가 키를 인식하지 못한다
+ *   (2026-08-05 실측 resultCode 30, 포털 참고문서도 "(복구중)" 표기). 게다가 그 API는
+ *   **유료** 지점만 담아 해수욕장 등 무료 명소가 통째로 빠진다. 이 경로는 유료+무료 전체이고
+ *   연 확정치를 쓰므로 근거가 더 넓고 깔끔하다. 인증키 불필요.
+ *
+ * 수집: 최신 확정 연도(현재연도-1부터 역방향 탐색)의 연간 방문자수 = 내국인+외국인 합계 행
  * 매칭: gangwon.json title과 지점명 정규화 매칭 (완전일치 → 4자+ 상호 포함, 시군 일치 우선)
  *   → src/data/visitors.gangwon.json
- * 한계: "유료" 관광지점 위주 통계 — 무료 지점(해수욕장 등)은 미포함, 인기순에서 뒤로 밀림
  *
  * --verify-only: 다운로드 없이 기존 src/data/visitors.gangwon.json에 대해 검증만 수행
  */
@@ -20,25 +24,32 @@ import { CURATED_PLACES } from "../src/lib/curation";
 import { SIGUNGU_SEATS } from "../src/lib/risk/regions";
 import type { Place } from "../src/lib/tour/types";
 
-try {
-  process.loadEnvFile(".env.local");
-} catch {
-  // --verify-only는 .env.local 없이도 동작해야 한다
-}
-
-const DATASET_PAGE = "https://www.data.go.kr/data/15000366/openapi.do";
-const ENDPOINT =
-  "http://openapi.tour.go.kr/openapi/service/TourismResourceStatsService/getPchrgTrrsrtVisitorList";
+const BASE = "https://know.tour.go.kr/stat/visitStatDis";
+const TABLE_PAGE = `${BASE}/table.do`;
+const DATA_ENDPOINT = `${BASE}/statTableData.do`;
+/** 통계표 화면의 시도 코드 — 강원특별자치도 */
+const GANGWON_SIDO = "4200000000";
 const OUT_PATH = path.join(process.cwd(), "src/data/visitors.gangwon.json");
 const GANGWON_JSON = path.join(process.cwd(), "src/data/gangwon.json");
 
 /** JSON 각 레코드에 새기는 출처 표기 (파일 주석이 불가능하므로 필드로 기록) */
 const SOURCE =
-  "문화체육관광부·한국문화관광연구원 주요관광지점 입장객통계 — 공공데이터포털 " +
-  DATASET_PAGE;
+  "문화체육관광부·한국문화관광연구원 주요관광지점 입장객통계 — 관광지식정보시스템 " +
+  TABLE_PAGE;
 
-/** 지점명 → contentId 수동 연결 — 자동 매칭이 놓치는 대표 지점만 (리포트 보고 채운다) */
-const OVERRIDES: Record<string, number> = {};
+/**
+ * 지점명 → contentId 수동 연결 — 자동 매칭이 놓치는 대표 지점만 (리포트 보고 채운다).
+ * **같은 입장 대상일 때만** 넣는다. 통계 지점과 TourAPI 관광지는 1:1이 아니라서
+ * (레고랜드·남이섬·강원랜드는 gangwon.json에 항목 자체가 없다) 인접·유사만으로 잇지 않는다 —
+ * 인기순은 "이 관광지에 몇 명이 왔나"를 말하는 자리이지 리조트 단지 합계를 말하는 자리가 아니다.
+ */
+const OVERRIDES: Record<string, number> = {
+  // 통계는 낙산사 경내 전체 입장객, gangwon.json은 그 대표 지점인 의상대로 들어 있다(동일 입장권)
+  낙산사: 125795,
+  // 같은 시설을 이름만 달리 적은 경우 — 부분일치 방향 제한에 걸려 자동으로는 안 붙는다
+  설악워터피아: 126714, // ↔ 한화리조트 설악 워터피아
+  무릉계곡: 125673, // ↔ 무릉계곡 용추폭포(강원) — 용추폭포가 무릉계곡 탐방로의 종점, 동일 입장
+};
 
 interface StatRow {
   resNm: string;
@@ -50,97 +61,89 @@ interface StatRow {
 // 수집
 // ---------------------------------------------------------------------------
 
-/** YYYYMM 문자열 — offset개월 전 */
-function ymAgo(base: Date, offset: number): string {
-  const d = new Date(base.getFullYear(), base.getMonth() - offset, 1);
-  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
 function tag(xml: string, name: string): string | undefined {
-  const m = xml.match(new RegExp(`<${name}>([^<]*)</${name}>`));
+  const m = xml.match(new RegExp(`<${name}>([\\s\\S]*?)</${name}>`));
   return m?.[1];
 }
 
-async function fetchMonth(key: string, ym: string, sido: string): Promise<StatRow[]> {
+/** 지점명 셀은 CDATA로 감싼 <a> 링크다 — 태그를 걷어내고 이름만 */
+function plainName(cell: string): string {
+  return cell
+    .replace(/<!\[CDATA\[|\]\]>/g, "")
+    .replace(/<[^>]*>/g, "")
+    .trim();
+}
+
+/**
+ * 세션 쿠키 확보 — 조회는 통계표 화면의 세션을 요구한다(쿠키 없이 호출하면 HTTP 500).
+ */
+async function openSession(): Promise<string> {
+  const res = await fetch(TABLE_PAGE);
+  if (!res.ok) throw new Error(`통계표 화면 열기 실패: HTTP ${res.status}`);
+  const cookie = res.headers
+    .getSetCookie()
+    .map((c) => c.split(";")[0])
+    .join("; ");
+  if (!cookie) throw new Error("세션 쿠키를 받지 못했습니다 — 사이트 구조 변경 확인 필요");
+  return cookie;
+}
+
+/**
+ * 한 해의 강원 전체 지점 조회.
+ * 화면이 보내는 파라미터를 **전부** 실어야 한다 — 빈 값이라도 빠지면 HTTP 500이다(실측).
+ */
+async function fetchYear(cookie: string, year: number): Promise<StatRow[]> {
+  const params = new URLSearchParams({
+    searchDateDivision: "C", // A=월별 B=분기별 C=년도별
+    searchClass: "A", // A=전체 C=유료 F=무료 — 무료 지점(해수욕장 등)까지 포함한다
+    searchStartYear: String(year),
+    searchEndYear: String(year),
+    searchStartMonth: "",
+    searchEndMonth: "",
+    searchStartQuarter: "",
+    searchEndQuarter: "",
+    searchBCType: "",
+    searchMCType: "",
+    searchSCType: "",
+    searchSido: GANGWON_SIDO,
+    searchGungu: "",
+    searchSightsNm: "",
+    searchAddr: GANGWON_SIDO,
+  });
+
+  const res = await fetch(`${DATA_ENDPOINT}?${params}`, { headers: { cookie } });
+  if (!res.ok) throw new Error(`조회 실패 HTTP ${res.status} (${year}년)`);
+  const xml = await res.text();
+
   const rows: StatRow[] = [];
-  for (let pageNo = 1; ; pageNo++) {
-    const url =
-      `${ENDPOINT}?serviceKey=${encodeURIComponent(key)}` +
-      `&YM=${ym}&SIDO=${encodeURIComponent(sido)}&numOfRows=1000&pageNo=${pageNo}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status} (YM=${ym})`);
-    const xml = await res.text();
-    const code = tag(xml, "resultCode");
-    if (code === "30" || /SERVICE KEY IS NOT REGISTERED/i.test(xml)) {
-      throw new Error(
-        `TOUR_API_KEY가 이 API에 등록되지 않았습니다 — data.go.kr에서 활용신청(자동승인) 필요: ${DATASET_PAGE}`,
-      );
-    }
-    if (code !== "00" && code !== "0000") {
-      throw new Error(`API 오류 resultCode=${code} (YM=${ym}): ${tag(xml, "resultMsg")}`);
-    }
-    const items = xml.match(/<item>[\s\S]*?<\/item>/g) ?? [];
-    for (const item of items) {
-      const resNm = tag(item, "resNm")?.trim();
-      const gungu = tag(item, "gungu")?.trim() ?? "";
-      const nat = Number(tag(item, "csNatCnt") ?? 0);
-      const forCnt = Number(tag(item, "csForCnt") ?? 0);
-      if (!resNm) continue;
-      const visitors = (Number.isFinite(nat) ? nat : 0) + (Number.isFinite(forCnt) ? forCnt : 0);
-      rows.push({ resNm, gungu, visitors });
-    }
-    const total = Number(tag(xml, "totalCount") ?? 0);
-    if (pageNo * 1000 >= total || items.length === 0) break;
+  for (const row of xml.match(/<row[\s\S]*?<\/row>/g) ?? []) {
+    // 지점마다 내국인·외국인·합계 세 행이 온다 — 합계만 취한다
+    if (tag(row, "NF_GB")?.trim() !== "합계") continue;
+    const resNm = plainName(tag(row, "RES_NM") ?? "");
+    const visitors = Number(tag(row, "TOTAL") ?? 0);
+    if (!resNm || !Number.isFinite(visitors)) continue;
+    rows.push({ resNm, gungu: tag(row, "GUNGU_NM")?.trim() ?? "", visitors });
   }
   return rows;
 }
 
-/** 공표 최신월 탐색 — 현재월-2부터 역방향 6개월, SIDO 표기 후보 순회 */
-async function findLatest(key: string): Promise<{ ym: string; sido: string }> {
-  const now = new Date();
-  for (let off = 2; off <= 7; off++) {
-    const ym = ymAgo(now, off);
-    for (const sido of ["강원특별자치도", "강원도", "강원"]) {
-      const rows = await fetchMonth(key, ym, sido);
-      if (rows.length > 0) {
-        console.log(`공표 최신월: ${ym} (SIDO="${sido}", ${rows.length}개 지점)`);
-        return { ym, sido };
-      }
+/** 최신 확정 연도 탐색 — 확정치는 이듬해 6월 공표라 현재연도-1부터 역방향 */
+async function collect(): Promise<{ rows: StatRow[]; year: number }> {
+  const cookie = await openSession();
+  const thisYear = new Date().getFullYear();
+  for (let year = thisYear - 1; year >= thisYear - 3; year--) {
+    const rows = await fetchYear(cookie, year);
+    if (rows.length > 0) {
+      const sum = rows.reduce((a, r) => a + r.visitors, 0);
+      console.log(
+        `수집 완료: ${year}년 확정치, 지점 ${rows.length}곳 (총 ${sum.toLocaleString()}명)`,
+      );
+      return { rows, year };
     }
+    console.log(`  ${year}년: 데이터 없음 — 이전 연도로`);
   }
-  throw new Error("최근 7개월 내 강원 데이터를 찾지 못했습니다 — SIDO 표기·API 상태 확인 필요");
+  throw new Error("최근 3년 내 강원 데이터를 찾지 못했습니다 — 사이트 구조·조회 조건 확인 필요");
 }
-
-async function collect(): Promise<Map<string, StatRow>> {
-  const key = process.env.TOUR_API_KEY;
-  if (!key) throw new Error("TOUR_API_KEY가 없습니다 — .env.local 확인");
-
-  const { ym: endYm, sido } = await findLatest(key);
-  const now = new Date();
-  const endOffset = (now.getFullYear() - Number(endYm.slice(0, 4))) * 12 +
-    (now.getMonth() + 1 - Number(endYm.slice(4)));
-
-  // (지점명|군구) 키로 12개월 합산
-  const acc = new Map<string, StatRow>();
-  for (let i = 0; i < 12; i++) {
-    const ym = ymAgo(now, endOffset + i);
-    const rows = await fetchMonth(key, ym, sido);
-    console.log(`  ${ym}: ${rows.length}개 지점`);
-    for (const r of rows) {
-      const k = `${r.resNm}|${r.gungu}`;
-      const prev = acc.get(k);
-      if (prev) prev.visitors += r.visitors;
-      else acc.set(k, { ...r });
-    }
-  }
-  const fromYm = ymAgo(now, endOffset + 11);
-  console.log(`수집 완료: ${fromYm}~${endYm}, 지점 ${acc.size}곳`);
-  // fromYm/toYm은 build()에서 레코드에 새긴다
-  collectRange = { fromYm, toYm: endYm };
-  return acc;
-}
-
-let collectRange = { fromYm: "", toYm: "" };
 
 // ---------------------------------------------------------------------------
 // gangwon.json 이름 매칭
@@ -154,7 +157,11 @@ function sigunguCodeOfGungu(gungu: string): number | undefined {
   return undefined;
 }
 
-function matchPlaces(stats: Map<string, StatRow>, places: Place[]): VisitorEntry[] {
+function matchPlaces(
+  stats: StatRow[],
+  places: Place[],
+  year: number,
+): VisitorEntry[] {
   const byNorm = new Map<string, Place[]>();
   for (const p of places) {
     const n = normalizeTitle(p.title);
@@ -166,7 +173,7 @@ function matchPlaces(stats: Map<string, StatRow>, places: Place[]): VisitorEntry
 
   const entries: VisitorEntry[] = [];
   const unmatched: StatRow[] = [];
-  for (const stat of stats.values()) {
+  for (const stat of stats) {
     if (stat.visitors <= 0) continue;
     const statNorm = normalizeTitle(stat.resNm);
     const statSigungu = sigunguCodeOfGungu(stat.gungu);
@@ -178,10 +185,13 @@ function matchPlaces(stats: Map<string, StatRow>, places: Place[]): VisitorEntry
     } else if (byNorm.has(statNorm)) {
       candidates = byNorm.get(statNorm)!;
     } else if (statNorm.length >= 4) {
-      // 상호 포함 부분일치 — "설악산국립공원" ↔ "설악산" 류
+      // 부분일치는 **관광지명이 통계 지점명에 포함되는 방향만** 허용한다
+      // ("휘닉스 파크" ⊂ "휘닉스파크(스키장)"). 관광지가 통계보다 더 구체적인 반대 방향은
+      // 리조트 전체 방문객을 그 안의 작은 시설에 붙이는 과대계상이 된다
+      // ("알펜시아리조트(골프장)" → "알펜시아리조트대관령스키역사관"). 그런 대응은 OVERRIDES로만.
       candidates = places.filter((p) => {
         const n = normalizeTitle(p.title);
-        return n.length >= 4 && (n.includes(statNorm) || statNorm.includes(n));
+        return n.length >= 4 && statNorm.includes(n);
       });
     }
     // 복수 후보: 시군 일치 우선 → 정규화 제목이 가장 긴(가장 구체적인) 것
@@ -204,8 +214,7 @@ function matchPlaces(stats: Map<string, StatRow>, places: Place[]): VisitorEntry
       statName: stat.resNm,
       gungu: stat.gungu,
       visitors: stat.visitors,
-      fromYm: collectRange.fromYm,
-      toYm: collectRange.toYm,
+      year,
       source: SOURCE,
     });
   }
@@ -223,9 +232,9 @@ function matchPlaces(stats: Map<string, StatRow>, places: Place[]): VisitorEntry
 }
 
 async function build(): Promise<VisitorEntry[]> {
-  const stats = await collect();
+  const { rows, year } = await collect();
   const places = JSON.parse(await readFile(GANGWON_JSON, "utf8")) as Place[];
-  const entries = matchPlaces(stats, places);
+  const entries = matchPlaces(rows, places, year);
   await writeFile(OUT_PATH, JSON.stringify(entries, null, 1) + "\n", "utf8");
   console.log(`저장: ${OUT_PATH} (${entries.length}곳)`);
   return entries;
@@ -269,7 +278,7 @@ async function verify(entries: VisitorEntry[]): Promise<void> {
       `  ${e.visitors.toLocaleString().padStart(12)}명  ${e.statName} ↔ ${e.title} (${e.gungu})`,
     );
   }
-  console.log(`\n검증 통과: ${entries.length}곳 매칭 (${entries[0]?.fromYm}~${entries[0]?.toYm})`);
+  console.log(`\n검증 통과: ${entries.length}곳 매칭 (${entries[0]?.year}년 확정치)`);
 }
 
 async function main(): Promise<void> {

@@ -2,10 +2,10 @@
  * 관광지 입장객수 — /places 인기순 정렬 근거.
  *
  * 데이터: src/data/visitors.gangwon.json — 문화체육관광부·한국문화관광연구원
- * 주요관광지점 입장객통계(공공데이터포털 OpenAPI)의 강원 최근 12개월 합산분.
+ * 주요관광지점 입장객통계(국가승인통계 113005)의 강원 연간 확정치(유료+무료 전체).
  * scripts/build-visitors.ts가 gangwon.json 관광지에 이름 매칭으로 연결해 생성·검증한다.
  *
- * 한계: 유료 관광지점 위주 통계라 무료 지점(해수욕장 등)은 다수 미포함 —
+ * 한계: 통계는 입장객을 세는 "지점"만 담는다 — 집계 지점이 아닌 관광지는 값이 없다.
  * 미매칭 관광지는 인기순에서 뒤로 밀리며(places-sort.ts), 그 안에서는 안전점수순.
  */
 import visitorsJson from "@/data/visitors.gangwon.json";
@@ -16,10 +16,10 @@ export interface VisitorEntry {
   /** 통계 원본의 관광지점명 (title과 다를 수 있음 — 매칭 근거 보존) */
   statName: string;
   gungu: string;
-  /** 최근 12개월 입장객수 합 (내국인+외국인) */
+  /** 연간 입장객수 (내국인+외국인) */
   visitors: number;
-  fromYm: string;
-  toYm: string;
+  /** 확정치 연도 */
+  year: number;
   source: string;
 }
 
@@ -49,7 +49,7 @@ export function buildVisitorsMap(entries: unknown): Map<number, number> {
 
 const VISITORS = buildVisitorsMap(visitorsJson);
 
-/** 최근 12개월 입장객수 — 통계에 매칭되지 않은 관광지는 undefined */
+/** 연간 입장객수 — 통계에 매칭되지 않은 관광지는 undefined */
 export function visitorCount(contentId: number): number | undefined {
   return VISITORS.get(contentId);
 }
@@ -64,5 +64,5 @@ export function hasVisitorData(): boolean {
 
 /** 출처 표기 — UI 각주용 */
 export function visitorsDataSource(): string {
-  return "문화체육관광부·한국문화관광연구원 주요관광지점 입장객통계(공공데이터포털)";
+  return "문화체육관광부·한국문화관광연구원 주요관광지점 입장객통계(관광지식정보시스템)";
 }
